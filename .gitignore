@@ -3,6 +3,7 @@ obj/
 /packages/
 riderModule.iml
 /_ReSharper.Caches/
+Shared/*.fs.js
 Client/node_modules/
 Client/src/*.fs.js
 Client/public/bundle.js

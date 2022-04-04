@@ -1,6 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Client", "Client\src\Client.fsproj", "{1BCCE3B4-3953-4708-9090-8601178245E7}"
+Project("{B50725F1-9094-4BD2-9A13-EABA788DABD1}") = "Client", "Shared\Shared.fsproj", "{623AEF27-D22C-45C3-AEB4-A96FCB263F95}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
