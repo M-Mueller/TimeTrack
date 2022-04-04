@@ -1,4 +1,5 @@
 ﻿var path = require("path");
+const CopyPlugin = require("copy-webpack-plugin");
 
 module.exports = {
     mode: "development",
@@ -8,9 +9,19 @@ module.exports = {
         path: path.join(__dirname, "public"),
     },
     devServer: {
-        static: {
-            directory: path.join(__dirname, "public")
-        },
+        static: [{
+            directory: path.join(__dirname, "public"),
+        }, {
+            directory: path.join(__dirname, "node_modules/doodle.css"),
+            publicPath: '/css',
+        }],
         port: 8000
-    }
+    },
+    plugins: [
+        new CopyPlugin({
+            patterns: [
+                { from: path.join(__dirname, "node_modules/doodle.css/*.{css,svg}").replace(/\\/g, "/"), to: path.join(__dirname, "public") },
+            ],
+        }),
+    ],
 }

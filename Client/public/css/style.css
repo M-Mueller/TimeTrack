@@ -1,4 +1,13 @@
-﻿main {
+﻿@font-face {
+    font-family: "Short Stack";
+    src: url("/css/ShortStack-Regular.ttf") format("truetype");
+}
+
+body {
+    font-family: 'Short Stack', cursive;
+}
+
+main {
     max-width: 960px;
     margin: 20px auto;
     width: 100%;
