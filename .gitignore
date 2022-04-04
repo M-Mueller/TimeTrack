@@ -1,0 +1,8 @@
+bin/
+obj/
+/packages/
+riderModule.iml
+/_ReSharper.Caches/
+App/node_modules/
+App/src/*.fs.js
+.idea/
