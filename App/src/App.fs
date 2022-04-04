@@ -83,39 +83,37 @@ let renderWorkUnit (dispatch: Msg -> unit) (maxIndex: int) (projectUnit: WorkUni
 
         dispatch (msg { projectUnit with unit = newUnit })
 
+    let hoursError =
+        if projectUnit.index = -1 then
+            // The last row is empty by default
+            ""
+        else
+            (validate projectUnit.unit).hours
+            |> Result.getError
+            |> Option.defaultValue ""
+
     Html.div [
         prop.style [ style.display.flex ]
         prop.children [
-            Html.label [
-                prop.style [ style.margin 5 ]
-                prop.children [
-                    Html.text "Hours"
-                    Html.input [
-                        prop.style [
-                            style.display.block
-                            style.maxWidth 200
-                        ]
-                        prop.type'.number
-                        prop.value projectUnit.unit.hours
-                        prop.onChange (fun hours -> dispatchChange { projectUnit.unit with hours = hours })
-                    ]
-                ]
-            ]
-            Html.label [
-                prop.style [
-                    style.width (length.percent 100)
-                    style.margin 5
-                ]
-                prop.children [
-                    Html.text "Comment"
-                    Html.input [
-                        prop.style [ style.display.block ]
-                        prop.type'.text
-                        prop.value projectUnit.unit.comment
-                        prop.onChange (fun comment -> dispatchChange { projectUnit.unit with comment = comment })
-                    ]
-                ]
-            ]
+            Elements.labeledInput
+                "Hours"
+                hoursError
+                []
+                [ prop.style [ style.maxWidth 200 ]
+                  prop.type'.number
+                  prop.value projectUnit.unit.hours
+                  prop.onChange (fun hours -> dispatchChange { projectUnit.unit with hours = hours }) ]
+            Elements.labeledInput
+                "Comment"
+                ""
+                [ prop.style [ style.flexGrow 1 ] ]
+                [ prop.type'.text
+                  prop.value projectUnit.unit.comment
+                  prop.onChange
+                      (fun comment ->
+                          dispatchChange
+                              { projectUnit.unit with
+                                    comment = comment }) ]
         ]
     ]
 

@@ -3,3 +3,27 @@
     margin: 100px auto;
     width: 100%;
 }
+
+input:invalid {
+    border-color: red;
+}
+
+label.labeledInput {
+    display: flex;
+    flex-direction: column;
+    margin: 5px;
+}
+
+input.labeledInput {
+    display: block;
+}
+
+span.labeledInput {
+    padding-left: 2px;
+    color: red;
+    font-size: 9pt;
+}
+
+span.labeledInput:empty::before {
+    content: "\200b"; /* unicode zero width space character */
+}
