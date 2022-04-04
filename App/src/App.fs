@@ -11,13 +11,18 @@ type State =
     { currentDate: System.DateTime
       selectedProject: ProjectName
       allProjects: ProjectName list
-      projects: Map<ProjectName, WorkUnit list> }
+      activeProjects: Project list }
 
-let selectableProjects (allProjects: ProjectName list) (activeProjects: Map<ProjectName, WorkUnit list>) =
+let selectableProjects (allProjects: string list) (activeProjects: Project list) =
+    let activeProjectNames =
+        activeProjects
+        |> List.map (fun p -> p.name)
+        |> Set
+
     allProjects
-    |> List.filter (fun p -> not (activeProjects.ContainsKey p))
+    |> List.filter (fun p -> not (Set.contains p activeProjectNames))
 
-let defaultSelectedProject (allProjects: ProjectName list) (activeProjects: Map<ProjectName, WorkUnit list>) =
+let defaultSelectedProject (allProjects: string list) (activeProjects: Project list) =
     selectableProjects allProjects activeProjects
     |> List.tryHead
     |> Option.defaultValue ""
@@ -30,22 +35,23 @@ type Msg =
     | RemoveProject of ProjectName
     | UpdateWorkUnit of WorkUnitInProject
     | AppendWorkUnit of WorkUnitInProject
-    | RemoveWorkUnit of WorkUnitInProject
+    | RemoveLastWorkUnit of WorkUnitInProject
 
 let init () =
     let allProjects = [ "HR"; "Company Admin"; "Suite" ]
 
     let projects =
-        Map [
-            ("HR",
-             [ { WorkUnit.hours = "4.0"
-                 comment = "Planning meeting" } ])
-        ]
+        [ { name = "HR"
+            scheduledHours = 42.0
+            committedHours = 20.0
+            workUnits =
+                [ { WorkUnit.hours = "4.0"
+                    comment = "Planning meeting" } ] } ]
 
     { currentDate = DateTime.Now
       selectedProject = defaultSelectedProject allProjects projects
       allProjects = allProjects
-      projects = projects }
+      activeProjects = projects }
 
 let update (msg: Msg) (state: State) : State =
     match msg with
@@ -62,60 +68,78 @@ let update (msg: Msg) (state: State) : State =
               selectedProject = selected }
 
     | AddSelectedProject ->
-        if state.projects.ContainsKey state.selectedProject then
+        let projectAlreadyActive =
+            List.exists (fun p -> p.name = state.selectedProject) state.activeProjects
+
+        if projectAlreadyActive then
             state
         else
-            let newProjects =
-                state.projects.Add(state.selectedProject, [])
+            let newActiveProjects =
+                { name = state.selectedProject
+                  scheduledHours = 0
+                  committedHours = 0
+                  workUnits = [] }
+                :: state.activeProjects
 
             { state with
-                  projects = newProjects
-                  selectedProject = defaultSelectedProject state.allProjects newProjects }
+                  activeProjects = newActiveProjects
+                  selectedProject = defaultSelectedProject state.allProjects newActiveProjects }
 
     | RemoveProject name ->
-        let newProjects = state.projects.Remove name
+        let newActiveProjects =
+            List.filter (fun p -> p.name <> name) state.activeProjects
 
         let newSelectedProject =
             if String.IsNullOrWhiteSpace state.selectedProject then
-                defaultSelectedProject state.allProjects newProjects
+                defaultSelectedProject state.allProjects newActiveProjects
             else
                 state.selectedProject
 
         { state with
-              projects = newProjects
+              activeProjects = newActiveProjects
               selectedProject = newSelectedProject }
 
     | UpdateWorkUnit newWorkUnit ->
-        assert state.projects.ContainsKey newWorkUnit.project
-
-        let oldWorkUnits = state.projects.Item newWorkUnit.project
-
-        let newWorkUnits =
-            List.updateAt newWorkUnit.index newWorkUnit.unit oldWorkUnits
+        let newActiveProjects =
+            state.activeProjects
+            |> List.map
+                (fun p ->
+                    if p.name = newWorkUnit.project then
+                        { p with
+                              workUnits = List.updateAt newWorkUnit.index newWorkUnit.unit p.workUnits }
+                    else
+                        p)
 
         { state with
-              projects = state.projects.Add(newWorkUnit.project, newWorkUnits) }
+              activeProjects = newActiveProjects }
 
     | AppendWorkUnit (newWorkUnit) ->
-        assert state.projects.ContainsKey newWorkUnit.project
-
-        let newWorkUnits =
-            (state.projects.Item newWorkUnit.project)
-            @ [ newWorkUnit.unit ]
-
-        { state with
-              projects = state.projects.Add(newWorkUnit.project, newWorkUnits) }
-
-    | RemoveWorkUnit workUnit ->
-        assert state.projects.ContainsKey workUnit.project
-
-        let oldWorkUnits = state.projects.Item workUnit.project
-
-        let newWorkUnits =
-            List.take (oldWorkUnits.Length - 1) oldWorkUnits
+        let newActiveProjects =
+            state.activeProjects
+            |> List.map
+                (fun p ->
+                    if p.name = newWorkUnit.project then
+                        { p with
+                              workUnits = p.workUnits @ [ newWorkUnit.unit ] }
+                    else
+                        p)
 
         { state with
-              projects = state.projects.Add(workUnit.project, newWorkUnits) }
+              activeProjects = newActiveProjects }
+
+    | RemoveLastWorkUnit workUnit ->
+        let newActiveProjects =
+            state.activeProjects
+            |> List.map
+                (fun p ->
+                    if p.name = workUnit.project then
+                        { p with
+                              workUnits = List.take (p.workUnits.Length - 1) p.workUnits }
+                    else
+                        p)
+
+        { state with
+              activeProjects = newActiveProjects }
 
 let renderDate (dispatch: Msg -> unit) (date: System.DateTime) =
     Html.div [
@@ -177,7 +201,7 @@ let renderWorkUnit (dispatch: Msg -> unit) (maxIndex: int) (projectUnit: WorkUni
             if projectUnit.index = -1 then
                 AppendWorkUnit
             elif projectUnit.index = maxIndex && newUnit.isEmpty then
-                RemoveWorkUnit
+                RemoveLastWorkUnit
             else
                 UpdateWorkUnit
 
@@ -217,16 +241,18 @@ let renderWorkUnit (dispatch: Msg -> unit) (maxIndex: int) (projectUnit: WorkUni
         ]
     ]
 
-let renderProject (dispatch: Msg -> unit) (name: string) (workUnits: WorkUnit list) =
+let renderProject (dispatch: Msg -> unit) (project: Project) =
     let projectUnits =
-        workUnits
+        project.workUnits
         |> List.mapi
             (fun index unit ->
-                { project = name
+                { project = project.name
                   index = index
                   unit = unit })
 
-    let maxIndex = List.length workUnits - 1
+    let maxIndex = List.length projectUnits - 1
+    
+    let totalHours = totalProjectHours project
 
     Html.article [
         prop.className "card"
@@ -239,7 +265,7 @@ let renderProject (dispatch: Msg -> unit) (name: string) (workUnits: WorkUnit li
                         style.alignItems.center
                     ]
                     prop.children [
-                        Html.h5 name
+                        Html.text project.name
                         Html.span [
                             prop.style [ style.flexGrow 1 ]
                         ]
@@ -247,16 +273,31 @@ let renderProject (dispatch: Msg -> unit) (name: string) (workUnits: WorkUnit li
                             prop.style [ style.color.red ]
                             prop.className [ "pseudo" ]
                             prop.text "X"
-                            prop.onClick (fun _ -> dispatch (RemoveProject name))
+                            prop.onClick (fun _ -> dispatch (RemoveProject project.name))
                         ]
                     ]
                  ])
+            yield
+                Html.header [
+                    prop.style [
+                        style.display.flex
+                        style.flexDirection.row
+                        style.alignItems.center
+                    ]
+                    prop.children [
+                        Html.h5 $"Total: {totalHours} hours"
+                        Html.span [
+                            prop.style [ style.flexGrow 1 ]
+                        ]
+                        Html.h5 $"{project.committedHours + totalHours} / {project.scheduledHours} scheduled"
+                    ]
+                ]
             yield! (List.map (renderWorkUnit dispatch maxIndex) projectUnits)
             yield
                 (renderWorkUnit
                     dispatch
                     maxIndex
-                    { project = name
+                    { project = project.name
                       index = -1
                       unit = { hours = ""; comment = "" } })
         ]
@@ -265,12 +306,12 @@ let renderProject (dispatch: Msg -> unit) (name: string) (workUnits: WorkUnit li
 let render (state: State) (dispatch: Msg -> unit) =
     Html.div [
         yield renderDate dispatch state.currentDate
-        yield renderAddProject dispatch (selectableProjects state.allProjects state.projects) state.selectedProject
+        yield
+            renderAddProject dispatch (selectableProjects state.allProjects state.activeProjects) state.selectedProject
         yield!
-            (state.projects
-             |> Map.map (renderProject dispatch)
-             |> Map.toList
-             |> List.map snd)
+            (state.activeProjects
+             |> List.sortBy (fun p -> p.name)
+             |> List.map (renderProject dispatch))
     ]
 
 Program.mkSimple init update render

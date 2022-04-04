@@ -12,6 +12,12 @@ type WorkUnit =
         String.IsNullOrWhiteSpace this.comment
         && String.IsNullOrWhiteSpace this.hours
 
+type Project =
+    { name: string
+      scheduledHours: float
+      committedHours: float
+      workUnits: WorkUnit list }
+
 type ValidatedWorkUnit =
     { hours: Result<float, string>
       comment: Result<string, string> }
@@ -22,6 +28,12 @@ let validate (unit: WorkUnit) : ValidatedWorkUnit =
           |> tryParseFloat
           |> Result.fromOption "Please enter a number"
       comment = Ok unit.comment }
+
+let totalProjectHours (project: Project) =
+    project.workUnits
+    |> List.map validate
+    |> List.choose (fun u -> u.hours |> Result.toOption)
+    |> List.sum
 
 type WorkUnitInProject =
     { project: ProjectName
