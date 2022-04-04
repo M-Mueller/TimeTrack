@@ -12,10 +12,6 @@ let tryParseFloat (input: string) : Option<float> =
     with
     | _ -> None
 
-module List =
-    let updateAt index value =
-        List.mapi (fun i old -> if i = index then value else old)
-
 module Result =
     let fromOption error option =
         match option with
