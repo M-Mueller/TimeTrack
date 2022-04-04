@@ -8,7 +8,7 @@
         <Compile Include="Utils.fs" />
         <Compile Include="Project.fs" />
         <Compile Include="Elements.fs" />
-        <Compile Include="App.fs" />
+        <Compile Include="Client.fs" />
     </ItemGroup>
 
     <ItemGroup>

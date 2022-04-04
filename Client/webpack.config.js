@@ -2,7 +2,7 @@
 
 module.exports = {
     mode: "development",
-    entry: "./src/App.fs.js",
+    entry: "./src/Client.fs.js",
     output: {
         filename: "bundle.js",
         path: path.join(__dirname, "public"),
