@@ -15,7 +15,7 @@ type WorkUnit =
 type Project =
     { name: string
       scheduledHours: float
-      committedHours: float
+      committedHoursOtherDays: float
       workUnits: WorkUnit list }
 
 type ValidatedWorkUnit =

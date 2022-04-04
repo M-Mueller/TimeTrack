@@ -9,20 +9,19 @@ open Project
 
 type State =
     { currentDate: System.DateTime
+      scheduledHours: float
+
       selectedProject: ProjectName
-      allProjects: ProjectName list
-      activeProjects: Project list }
 
-let selectableProjects (allProjects: string list) (activeProjects: Project list) =
-    let activeProjectNames =
-        activeProjects
-        |> List.map (fun p -> p.name)
-        |> Set
+      projects: Project list
+      activeProjects: Set<ProjectName> }
 
-    allProjects
-    |> List.filter (fun p -> not (Set.contains p activeProjectNames))
+let selectableProjects (projects: Project list) (activeProjects: Set<ProjectName>) : ProjectName list =
+    projects
+    |> List.map (fun p -> p.name)
+    |> List.filter (fun n -> not (activeProjects.Contains n))
 
-let defaultSelectedProject (allProjects: string list) (activeProjects: Project list) =
+let defaultSelectedProject (allProjects: Project list) (activeProjects: Set<ProjectName>) : ProjectName =
     selectableProjects allProjects activeProjects
     |> List.tryHead
     |> Option.defaultValue ""
@@ -31,27 +30,40 @@ type Msg =
     | IncrementDate
     | DecrementDate
     | ChangeSelectedProject of ProjectName
-    | AddSelectedProject
-    | RemoveProject of ProjectName
+    | ActivateSelectedProject
+    | RemoveActiveProject of ProjectName
     | UpdateWorkUnit of WorkUnitInProject
     | AppendWorkUnit of WorkUnitInProject
     | RemoveLastWorkUnit of WorkUnitInProject
 
 let init () =
-    let allProjects = [ "HR"; "Company Admin"; "Suite" ]
-
     let projects =
         [ { name = "HR"
             scheduledHours = 42.0
-            committedHours = 20.0
+            committedHoursOtherDays = 20.0
             workUnits =
                 [ { WorkUnit.hours = "4.0"
-                    comment = "Planning meeting" } ] } ]
+                    comment = "Planning meeting" } ] }
+          { name = "Company Admin"
+            scheduledHours = 0.0
+            committedHoursOtherDays = 5.0
+            workUnits = [] }
+          { name = "Suite"
+            scheduledHours = 30.0
+            committedHoursOtherDays = 15.0
+            workUnits = [] } ]
+
+    let activeProjects =
+        projects
+        |> List.filter (fun p -> not p.workUnits.IsEmpty)
+        |> List.map (fun p -> p.name)
+        |> Set
 
     { currentDate = DateTime.Now
-      selectedProject = defaultSelectedProject allProjects projects
-      allProjects = allProjects
-      activeProjects = projects }
+      scheduledHours = 8
+      selectedProject = defaultSelectedProject projects activeProjects
+      projects = projects
+      activeProjects = activeProjects }
 
 let update (msg: Msg) (state: State) : State =
     match msg with
@@ -67,41 +79,45 @@ let update (msg: Msg) (state: State) : State =
         { state with
               selectedProject = selected }
 
-    | AddSelectedProject ->
-        let projectAlreadyActive =
-            List.exists (fun p -> p.name = state.selectedProject) state.activeProjects
-
-        if projectAlreadyActive then
+    | ActivateSelectedProject ->
+        if state.activeProjects.Contains state.selectedProject then
             state
         else
             let newActiveProjects =
-                { name = state.selectedProject
-                  scheduledHours = 0
-                  committedHours = 0
-                  workUnits = [] }
-                :: state.activeProjects
+                Set.add state.selectedProject state.activeProjects
 
             { state with
                   activeProjects = newActiveProjects
-                  selectedProject = defaultSelectedProject state.allProjects newActiveProjects }
+                  selectedProject = defaultSelectedProject state.projects newActiveProjects }
 
-    | RemoveProject name ->
-        let newActiveProjects =
-            List.filter (fun p -> p.name <> name) state.activeProjects
+    | RemoveActiveProject name ->
+        let newActiveProjects = Set.remove name state.activeProjects
 
+        // Clear workUnits of removed project
+        let newProjects =
+            state.projects
+            |> List.map
+                (fun p ->
+                    if p.name = name then
+                        { p with workUnits = [] }
+                    else
+                        p)
+
+        // Reset selected if it was empty
         let newSelectedProject =
             if String.IsNullOrWhiteSpace state.selectedProject then
-                defaultSelectedProject state.allProjects newActiveProjects
+                defaultSelectedProject state.projects newActiveProjects
             else
                 state.selectedProject
 
         { state with
+              projects = newProjects
               activeProjects = newActiveProjects
               selectedProject = newSelectedProject }
 
     | UpdateWorkUnit newWorkUnit ->
-        let newActiveProjects =
-            state.activeProjects
+        let newProjects =
+            state.projects
             |> List.map
                 (fun p ->
                     if p.name = newWorkUnit.project then
@@ -110,12 +126,11 @@ let update (msg: Msg) (state: State) : State =
                     else
                         p)
 
-        { state with
-              activeProjects = newActiveProjects }
+        { state with projects = newProjects }
 
     | AppendWorkUnit (newWorkUnit) ->
-        let newActiveProjects =
-            state.activeProjects
+        let newProjects =
+            state.projects
             |> List.map
                 (fun p ->
                     if p.name = newWorkUnit.project then
@@ -124,12 +139,11 @@ let update (msg: Msg) (state: State) : State =
                     else
                         p)
 
-        { state with
-              activeProjects = newActiveProjects }
+        { state with projects = newProjects }
 
     | RemoveLastWorkUnit workUnit ->
-        let newActiveProjects =
-            state.activeProjects
+        let newProjects =
+            state.projects
             |> List.map
                 (fun p ->
                     if p.name = workUnit.project then
@@ -138,8 +152,7 @@ let update (msg: Msg) (state: State) : State =
                     else
                         p)
 
-        { state with
-              activeProjects = newActiveProjects }
+        { state with projects = newProjects }
 
 let renderDate (dispatch: Msg -> unit) (date: System.DateTime) =
     Html.div [
@@ -190,7 +203,7 @@ let renderAddProject (dispatch: Msg -> unit) (projects: ProjectName list) (selec
                     || String.IsNullOrWhiteSpace selected
                 )
                 prop.text "Add"
-                prop.onClick (fun _ -> dispatch AddSelectedProject)
+                prop.onClick (fun _ -> dispatch ActivateSelectedProject)
             ]
         ]
     ]
@@ -251,7 +264,7 @@ let renderProject (dispatch: Msg -> unit) (project: Project) =
                   unit = unit })
 
     let maxIndex = List.length projectUnits - 1
-    
+
     let totalHours = totalProjectHours project
 
     Html.article [
@@ -273,7 +286,7 @@ let renderProject (dispatch: Msg -> unit) (project: Project) =
                             prop.style [ style.color.red ]
                             prop.className [ "pseudo" ]
                             prop.text "X"
-                            prop.onClick (fun _ -> dispatch (RemoveProject project.name))
+                            prop.onClick (fun _ -> dispatch (RemoveActiveProject project.name))
                         ]
                     ]
                  ])
@@ -289,7 +302,7 @@ let renderProject (dispatch: Msg -> unit) (project: Project) =
                         Html.span [
                             prop.style [ style.flexGrow 1 ]
                         ]
-                        Html.h5 $"{project.committedHours + totalHours} / {project.scheduledHours} scheduled"
+                        Html.h5 $"{project.committedHoursOtherDays + totalHours} / {project.scheduledHours} scheduled"
                     ]
                 ]
             yield! (List.map (renderWorkUnit dispatch maxIndex) projectUnits)
@@ -304,12 +317,32 @@ let renderProject (dispatch: Msg -> unit) (project: Project) =
     ]
 
 let render (state: State) (dispatch: Msg -> unit) =
+    let totalHoursToday =
+        state.projects
+        |> List.map totalProjectHours
+        |> List.sum
+
     Html.div [
         yield renderDate dispatch state.currentDate
         yield
-            renderAddProject dispatch (selectableProjects state.allProjects state.activeProjects) state.selectedProject
+            Html.div [
+                prop.style [
+                    if totalHoursToday = 0 then
+                        style.color.red
+                    elif totalHoursToday < state.scheduledHours then
+                        style.color.orange
+                    elif totalHoursToday = state.scheduledHours then
+                        style.color.black
+                    else
+                        style.color.green
+                ]
+                prop.text
+                    $"Total hours: {totalHoursToday}/{state.scheduledHours} ({totalHoursToday - state.scheduledHours})"
+            ]
+        yield renderAddProject dispatch (selectableProjects state.projects state.activeProjects) state.selectedProject
         yield!
-            (state.activeProjects
+            (state.projects
+             |> List.filter (fun p -> state.activeProjects.Contains p.name)
              |> List.sortBy (fun p -> p.name)
              |> List.map (renderProject dispatch))
     ]
