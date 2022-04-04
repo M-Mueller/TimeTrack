@@ -1,11 +1,15 @@
 module Client
 
 open System
+open Fable.Core
 open Elmish
 open Elmish.React
 open Feliz
+
 open Utils
 open Project
+
+type Issue = { key: string; title: string }
 
 type State =
     { currentDate: System.DateTime
@@ -14,7 +18,9 @@ type State =
       selectedProject: ProjectName
 
       projects: Project list
-      activeProjects: Set<ProjectName> }
+      activeProjects: Set<ProjectName>
+
+      relatedIssues: Issue list }
 
 let selectableProjects (projects: Project list) (activeProjects: Set<ProjectName>) : ProjectName list =
     projects
@@ -35,6 +41,7 @@ type Msg =
     | UpdateWorkUnit of WorkUnitInProject
     | AppendWorkUnit of WorkUnitInProject
     | RemoveLastWorkUnit of WorkUnitInProject
+    | WriteToClipboard of string
 
 let init () =
     let projects =
@@ -44,11 +51,11 @@ let init () =
             workUnits =
                 [ { WorkUnit.hours = "4.0"
                     comment = "Planning meeting" } ] }
-          { name = "Company Admin"
+          { name = "Admin"
             scheduledHours = 0.0
             committedHoursOtherDays = 5.0
             workUnits = [] }
-          { name = "Suite"
+          { name = "Super Duper App"
             scheduledHours = 30.0
             committedHoursOtherDays = 15.0
             workUnits = [] } ]
@@ -63,7 +70,17 @@ let init () =
       scheduledHours = 8
       selectedProject = defaultSelectedProject projects activeProjects
       projects = projects
-      activeProjects = activeProjects }
+      activeProjects = activeProjects
+      relatedIssues =
+          [ { key = "HR-5"
+              title = "Interview Bob" }
+            { key = "SDA-51"
+              title = "Crashes randomly" }
+            { key = "SDA-42"
+              title = "Moar Features!" } ] }
+
+[<Emit("navigator.clipboard.writeText($0)")>]
+let writeToClipboard (text: string) : unit = jsNative
 
 let update (msg: Msg) (state: State) : State =
     match msg with
@@ -154,9 +171,17 @@ let update (msg: Msg) (state: State) : State =
 
         { state with projects = newProjects }
 
+    | WriteToClipboard text ->
+        writeToClipboard text
+        state
+
 let renderDate (dispatch: Msg -> unit) (date: System.DateTime) =
     Html.div [
-        prop.style [ style.display.flex ]
+        prop.style [
+            style.display.flex
+            style.flexDirection.row
+            style.alignItems.center
+        ]
         prop.children [
             Html.button [
                 prop.role "button"
@@ -164,7 +189,10 @@ let renderDate (dispatch: Msg -> unit) (date: System.DateTime) =
                 prop.onClick (fun _ -> dispatch DecrementDate)
                 prop.text "<"
             ]
-            Html.h1 (date.ToString("d.MM.yyyy"))
+            Html.span [
+                prop.style [ style.margin (0, 5) ]
+                prop.text (date.ToString("d.MM.yyyy"))
+            ]
             Html.button [
                 prop.role "button"
                 prop.classes [ "secondary; outline" ]
@@ -189,6 +217,7 @@ let renderAddProject (dispatch: Msg -> unit) (projects: ProjectName list) (selec
                 prop.disabled projects.IsEmpty
                 prop.style [
                     style.marginRight (length.rem 1)
+                    style.width (length.percent 100)
                 ]
                 prop.value selected
                 prop.children (
@@ -230,7 +259,10 @@ let renderWorkUnit (dispatch: Msg -> unit) (maxIndex: int) (projectUnit: WorkUni
             |> Option.defaultValue ""
 
     Html.div [
-        prop.style [ style.display.flex ]
+        prop.style [
+            style.display.flex
+            style.flexWrap.wrap
+        ]
         prop.children [
             Elements.labeledInput
                 "Hours"
@@ -268,7 +300,7 @@ let renderProject (dispatch: Msg -> unit) (project: Project) =
     let totalHours = totalProjectHours project
 
     Html.article [
-        prop.className "card"
+        prop.className "doodle-border"
         prop.children [
             yield
                 (Html.header [
@@ -316,35 +348,102 @@ let renderProject (dispatch: Msg -> unit) (project: Project) =
         ]
     ]
 
-let render (state: State) (dispatch: Msg -> unit) =
+let renderProjects (dispatch: Msg -> unit) (state: State) =
     let totalHoursToday =
         state.projects
         |> List.map totalProjectHours
         |> List.sum
 
     Html.div [
-        yield renderDate dispatch state.currentDate
-        yield
-            Html.div [
-                prop.style [
-                    if totalHoursToday = 0 then
-                        style.color.red
-                    elif totalHoursToday < state.scheduledHours then
-                        style.color.orange
-                    elif totalHoursToday = state.scheduledHours then
-                        style.color.black
-                    else
-                        style.color.green
+        prop.style [ style.flexGrow 1 ]
+        prop.children [
+            yield
+                Html.div [
+                    prop.style [
+                        style.marginTop 10
+                        if totalHoursToday = 0 then
+                            style.color.red
+                        elif totalHoursToday < state.scheduledHours then
+                            style.color.orange
+                        elif totalHoursToday = state.scheduledHours then
+                            style.color.black
+                        else
+                            style.color.green
+                    ]
+                    prop.text
+                        $"Total hours: {totalHoursToday}/{state.scheduledHours} ({totalHoursToday - state.scheduledHours})"
                 ]
-                prop.text
-                    $"Total hours: {totalHoursToday}/{state.scheduledHours} ({totalHoursToday - state.scheduledHours})"
+            yield
+                renderAddProject dispatch (selectableProjects state.projects state.activeProjects) state.selectedProject
+            yield!
+                (state.projects
+                 |> List.filter (fun p -> state.activeProjects.Contains p.name)
+                 |> List.sortBy (fun p -> p.name)
+                 |> List.map (renderProject dispatch))
+        ]
+    ]
+
+let renderRelatedIssues (dispatch: Msg -> unit) (issues: Issue list) =
+    let renderIssue issue =
+        Html.div [
+            prop.className "doodle-border"
+            prop.style [
+                style.margin 6
+                style.position.relative
             ]
-        yield renderAddProject dispatch (selectableProjects state.projects state.activeProjects) state.selectedProject
-        yield!
-            (state.projects
-             |> List.filter (fun p -> state.activeProjects.Contains p.name)
-             |> List.sortBy (fun p -> p.name)
-             |> List.map (renderProject dispatch))
+            prop.children [
+                Html.a [
+                    prop.href $"http://example.com/issues/{issue.key}"
+                    prop.text issue.key
+                    prop.style [
+                        style.display.block
+                        style.fontSize (length.pt 16)
+                    ]
+                ]
+                Html.a [
+                    prop.style [
+                        style.cursor.pointer
+                        style.position.absolute
+                        style.right 2
+                        style.top 2
+                    ]
+                    prop.text "📋"
+                    prop.title "Copy to clipboard"
+                    prop.onClick
+                        (fun _ ->
+                            WriteToClipboard $"[{issue.key}] {issue.title}"
+                            |> dispatch)
+
+                    ]
+                Html.text issue.title
+            ]
+        ]
+
+    Html.div [
+        prop.className "doodle-border"
+        prop.style [
+            style.maxWidth (length.px 300)
+            style.marginLeft 20
+        ]
+        prop.children (
+            Html.text "Related JIRA Issues"
+            :: List.map renderIssue issues
+        )
+    ]
+
+let render (state: State) (dispatch: Msg -> unit) =
+    Html.div [
+        renderDate dispatch state.currentDate
+        Html.div [
+            prop.style [
+                style.display.flex
+                style.flexDirection.row
+            ]
+            prop.children [
+                renderProjects dispatch state
+                renderRelatedIssues dispatch state.relatedIssues
+            ]
+        ]
     ]
 
 Program.mkSimple init update render
