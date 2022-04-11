@@ -17,17 +17,17 @@ type State =
 
       selectedProject: ProjectName
 
-      projects: Project list
+      projects: ScheduledProject list
       activeProjects: Set<ProjectName>
 
       relatedIssues: Issue list }
 
-let selectableProjects (projects: Project list) (activeProjects: Set<ProjectName>) : ProjectName list =
+let selectableProjects (projects: ScheduledProject list) (activeProjects: Set<ProjectName>) : ProjectName list =
     projects
     |> List.map (fun p -> p.name)
     |> List.filter (fun n -> not (activeProjects.Contains n))
 
-let defaultSelectedProject (allProjects: Project list) (activeProjects: Set<ProjectName>) : ProjectName =
+let defaultSelectedProject (allProjects: ScheduledProject list) (activeProjects: Set<ProjectName>) : ProjectName =
     selectableProjects allProjects activeProjects
     |> List.tryHead
     |> Option.defaultValue ""
@@ -286,7 +286,7 @@ let renderWorkUnit (dispatch: Msg -> unit) (maxIndex: int) (projectUnit: WorkUni
         ]
     ]
 
-let renderProject (dispatch: Msg -> unit) (project: Project) =
+let renderProject (dispatch: Msg -> unit) (project: ScheduledProject) =
     let projectUnits =
         project.workUnits
         |> List.mapi

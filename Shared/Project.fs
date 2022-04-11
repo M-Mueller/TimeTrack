@@ -12,7 +12,7 @@ type WorkUnit =
         String.IsNullOrWhiteSpace this.comment
         && String.IsNullOrWhiteSpace this.hours
 
-type Project =
+type ScheduledProject =
     { name: string
       scheduledHours: decimal
       committedHoursOtherDays: decimal
@@ -37,7 +37,7 @@ let validate (unit: WorkUnit) : ValidatedWorkUnit =
                       Ok hours)
       comment = Ok unit.comment }
 
-let totalProjectHours (project: Project) =
+let totalProjectHours (project: ScheduledProject) =
     project.workUnits
     |> List.map validate
     |> List.choose (fun u -> u.hours |> Result.toOption)
