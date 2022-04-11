@@ -12,7 +12,7 @@ open Thoth.Json.Net
 let main args =
     let connection =
         Sqlite.existingConnection (new SqliteConnection("Data Source=:memory:"))
-    //        Sqlite.existingConnection (new SqliteConnection("Data Source=db.sqlite"))
+//        Sqlite.existingConnection (new SqliteConnection("Data Source=C:\Users\Mueller\Projects\TimeTrack\db.sqlite"))
 
     Database.createTables connection
 

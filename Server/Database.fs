@@ -9,16 +9,19 @@ let createTables connection =
     |> Sqlite.command
         """
         PRAGMA foreign_keys = ON;
-        CREATE TABLE Users (id INTEGER PRIMARY KEY, email TEXT UNIQUE NOT NULL, password BLOB NOT NULL, salt BLOB NOT NULL);
+        CREATE TABLE Users (id INTEGER PRIMARY KEY, name TEXT UNIQUE NOT NULL, password BLOB NOT NULL, salt BLOB NOT NULL);
         CREATE TABLE Projects (id INTEGER PRIMARY KEY, name TEXT UNIQUE NOT NULL);
         CREATE TABLE ScheduledProjects (
-            project INTEGER REFERENCES Projects(id) ON DELETE CASCADE,
+            project INTEGER NOT NULL REFERENCES Projects(id) ON DELETE CASCADE,
+            user INTEGER NOT NULL REFERENCES Users(id) ON DELETE CASCADE,
             month INTEGER NOT NULL,
             year INTEGER NOT NULL,
-            scheduledHours INTEGER NOT NULL
+            scheduledHours INTEGER NOT NULL,
+            UNIQUE(project, user, month, year)
         );
         CREATE TABLE WorkUnits (
-            project INTEGER REFERENCES Projects(id) ON DELETE CASCADE,
+            project INTEGER NOT NULL REFERENCES Projects(id) ON DELETE CASCADE,
+            user INTEGER NOT NULL REFERENCES Users(id) ON DELETE CASCADE,
             day TEXT NOT NULL,
             hours TEXT NOT NULL,
             comment TEXT NOT NULL
@@ -36,8 +39,8 @@ let initTestData connection =
 
     connection
     |> Sqlite.executeTransaction [
-        "INSERT INTO Users(id, email, password, salt) VALUES (null, @email, @pwd, @salt)",
-        [ [ "@email", Sqlite.string "admin@example.com"
+        "INSERT INTO Users(id, name, password, salt) VALUES (null, @name, @pwd, @salt)",
+        [ [ "@name", Sqlite.string "admin@example.com"
             "@pwd", Sqlite.bytes hash
             "@salt", Sqlite.bytes salt ] ]
 
@@ -46,18 +49,26 @@ let initTestData connection =
           [ "@name", Sqlite.string "Admin" ]
           [ "@name", Sqlite.string "Super Duper App" ] ]
 
-        "INSERT INTO ScheduledProjects(project, month, year, scheduledHours) VALUES (@project, @month, @year, @scheduled)",
+        "INSERT INTO ScheduledProjects(project, user, month, year, scheduledHours) VALUES (@project, @user, @month, @year, @scheduled)",
         [ [ "@project", Sqlite.int 1
+            "@user", Sqlite.int 1
             "@month", Sqlite.int 4
             "@year", Sqlite.int 2022
             "@scheduled", Sqlite.int 12 ]
           [ "@project", Sqlite.int 3
+            "@user", Sqlite.int 1
             "@month", Sqlite.int 4
             "@year", Sqlite.int 2022
-            "@scheduled", Sqlite.int 42 ] ]
+            "@scheduled", Sqlite.int 42 ]
+          [ "@project", Sqlite.int 1
+            "@user", Sqlite.int 1
+            "@month", Sqlite.int 5
+            "@year", Sqlite.int 2022
+            "@scheduled", Sqlite.int 24 ] ]
 
-        "INSERT INTO WorkUnits(project, day, hours, comment) VALUES (@project, @day, @hours, @comment)",
+        "INSERT INTO WorkUnits(project, user, day, hours, comment) VALUES (@project, @user, @day, @hours, @comment)",
         [ [ "@project", Sqlite.int 1
+            "@user", Sqlite.int 1
             "@day", Sqlite.string "2022-04-07"
             "@hours", Sqlite.int 4
             "@comment", Sqlite.string "Interviewing Bob" ] ]
@@ -71,20 +82,20 @@ let initTestData connection =
 
 type internal UserDTO =
     { id: int64
-      email: string
+      name: string
       hash: byte []
       salt: byte [] }
 
-let authenticateUser connection (email: string) (password: string) =
+let authenticateUser connection (name: string) (password: string) =
     connection
-    |> Sqlite.query "SELECT id, password, salt FROM Users WHERE email=@email"
+    |> Sqlite.query "SELECT id, password, salt FROM Users WHERE name=@name"
     |> Sqlite.parameters [
-        "@email", Sqlite.string email
+        "@name", Sqlite.string name
        ]
     |> Sqlite.executeAsync
         (fun read ->
             { id = read.int64 "id"
-              email = email
+              name = name
               hash = read.bytes "password"
               salt = read.bytes "salt" })
     |> Async.map (
@@ -93,7 +104,7 @@ let authenticateUser connection (email: string) (password: string) =
                 match List.tryHead users with
                 | Some user ->
                     if (Crypto.sha256 password user.salt) = user.hash then
-                        Some { id = user.id; email = user.email }
+                        Some { id = user.id; name = user.name }
                     else
                         None
                 | None -> None)
