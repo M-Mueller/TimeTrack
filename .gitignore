@@ -7,4 +7,6 @@ Shared/*.fs.js
 Client/node_modules/
 Client/src/*.fs.js
 Client/public/bundle.js
+Client/public/css/*.svg
+Client/public/css/doodle.css
 .idea/

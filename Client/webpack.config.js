@@ -20,7 +20,11 @@ module.exports = {
     plugins: [
         new CopyPlugin({
             patterns: [
-                { from: path.join(__dirname, "node_modules/doodle.css/*.{css,svg}").replace(/\\/g, "/"), to: path.join(__dirname, "public") },
+                {
+                    from: "*.{css,svg}",
+                    context: path.join(__dirname, "node_modules/doodle.css/").replace(/\\/g, "/"),
+                    to: path.join(__dirname, "public/css")
+                },
             ],
         }),
     ],
