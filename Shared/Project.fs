@@ -3,6 +3,8 @@
 open System
 open Utils
 
+type Project = string
+
 type ProjectName = string
 
 type WorkUnit =
