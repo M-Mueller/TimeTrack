@@ -12,8 +12,8 @@ open Project
 type Issue = { key: string; title: string }
 
 type State =
-    { currentDate: System.DateTime
-      scheduledHours: float
+    { currentDate: DateTime
+      scheduledHours: decimal
 
       selectedProject: ProjectName
 
@@ -46,18 +46,18 @@ type Msg =
 let init () =
     let projects =
         [ { name = "HR"
-            scheduledHours = 42.0
-            committedHoursOtherDays = 20.0
+            scheduledHours = 42.0m
+            committedHoursOtherDays = 20.0m
             workUnits =
                 [ { WorkUnit.hours = "4.0"
                     comment = "Planning meeting" } ] }
           { name = "Admin"
-            scheduledHours = 0.0
-            committedHoursOtherDays = 5.0
+            scheduledHours = 0.0m
+            committedHoursOtherDays = 5.0m
             workUnits = [] }
           { name = "Super Duper App"
-            scheduledHours = 30.0
-            committedHoursOtherDays = 15.0
+            scheduledHours = 30.0m
+            committedHoursOtherDays = 15.0m
             workUnits = [] } ]
 
     let activeProjects =
@@ -67,7 +67,7 @@ let init () =
         |> Set
 
     { currentDate = DateTime.Now
-      scheduledHours = 8
+      scheduledHours = 8m
       selectedProject = defaultSelectedProject projects activeProjects
       projects = projects
       activeProjects = activeProjects
@@ -145,7 +145,7 @@ let update (msg: Msg) (state: State) : State =
 
         { state with projects = newProjects }
 
-    | AppendWorkUnit (newWorkUnit) ->
+    | AppendWorkUnit newWorkUnit ->
         let newProjects =
             state.projects
             |> List.map
@@ -175,7 +175,7 @@ let update (msg: Msg) (state: State) : State =
         writeToClipboard text
         state
 
-let renderDate (dispatch: Msg -> unit) (date: System.DateTime) =
+let renderDate (dispatch: Msg -> unit) (date: DateTime) =
     Html.div [
         prop.style [
             style.display.flex
@@ -361,7 +361,7 @@ let renderProjects (dispatch: Msg -> unit) (state: State) =
                 Html.div [
                     prop.style [
                         style.marginTop 10
-                        if totalHoursToday = 0 then
+                        if totalHoursToday = 0m then
                             style.color.red
                         elif totalHoursToday < state.scheduledHours then
                             style.color.orange

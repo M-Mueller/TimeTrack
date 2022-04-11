@@ -14,19 +14,27 @@ type WorkUnit =
 
 type Project =
     { name: string
-      scheduledHours: float
-      committedHoursOtherDays: float
+      scheduledHours: decimal
+      committedHoursOtherDays: decimal
       workUnits: WorkUnit list }
 
 type ValidatedWorkUnit =
-    { hours: Result<float, string>
+    { hours: Result<decimal, string>
       comment: Result<string, string> }
 
 let validate (unit: WorkUnit) : ValidatedWorkUnit =
     { hours =
           unit.hours
-          |> tryParseFloat
+          |> tryParseDecimal
           |> Result.fromOption "Please enter a number"
+          |> Result.bind
+              (fun hours ->
+                  if hours <= 0.0m then
+                      Error "Must be larger than 0"
+                  elif hours > 24.0m then
+                      Error "Must be smaller than 24"
+                  else
+                      Ok hours)
       comment = Ok unit.comment }
 
 let totalProjectHours (project: Project) =

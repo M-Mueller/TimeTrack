@@ -11,6 +11,12 @@ let tryParseFloat (input: string) : Option<float> =
         Some(float input)
     with
     | _ -> None
+    
+let tryParseDecimal (input: string) : Option<decimal> =
+    try
+        Some(decimal input)
+    with
+    | _ -> None
 
 module Result =
     let fromOption error option =
