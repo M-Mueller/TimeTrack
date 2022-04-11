@@ -1,4 +1,4 @@
-name: NodeJS with Webpack
+name: Fable Webapp
 
 on:
   push:
@@ -28,3 +28,9 @@ jobs:
         cd Client
         npm install
         npm run build
+        
+    - name: Deploy to Github pages
+      uses: JamesIves/github-pages-deploy-action@v4.3.0
+      with:
+        branch: gh-pages
+        folder: Client/public
