@@ -2,13 +2,14 @@
 
 open Project
 open Fumble
+open Suave.Utils
 
 let createTables connection =
     connection
     |> Sqlite.command
         """
         PRAGMA foreign_keys = ON;
-        CREATE TABLE Users (id INTEGER PRIMARY KEY, email TEXT UNIQUE NOT NULL, passwordhash TEXT NOT NULL);
+        CREATE TABLE Users (id INTEGER PRIMARY KEY, email TEXT UNIQUE NOT NULL, password BLOB NOT NULL, salt BLOB NOT NULL);
         CREATE TABLE Projects (id INTEGER PRIMARY KEY, name TEXT UNIQUE NOT NULL);
         CREATE TABLE ScheduledProjects (
             project INTEGER REFERENCES Projects(id) ON DELETE CASCADE,
@@ -30,8 +31,16 @@ let createTables connection =
         | Error exn -> failwith exn.Message)
 
 let initTestData connection =
+    let salt = Crypto.salt ()
+    let hash = Crypto.sha256 "admin" salt
+
     connection
     |> Sqlite.executeTransaction [
+        "INSERT INTO Users(id, email, password, salt) VALUES (null, @email, @pwd, @salt)",
+        [ [ "@email", Sqlite.string "admin@example.com"
+            "@pwd", Sqlite.bytes hash
+            "@salt", Sqlite.bytes salt ] ]
+
         "INSERT INTO Projects(id, name) VALUES (null, @name)",
         [ [ "@name", Sqlite.string "HR" ]
           [ "@name", Sqlite.string "Admin" ]
@@ -58,6 +67,37 @@ let initTestData connection =
         | Ok rows -> printfn $"Inserted {List.sum rows} rows"
         | Error exn -> failwith exn.Message)
 
+
+
+type internal UserDTO =
+    { id: int64
+      email: string
+      hash: byte []
+      salt: byte [] }
+
+let authenticateUser connection (email: string) (password: string) =
+    connection
+    |> Sqlite.query "SELECT id, password, salt FROM Users WHERE email=@email"
+    |> Sqlite.parameters [
+        "@email", Sqlite.string email
+       ]
+    |> Sqlite.executeAsync
+        (fun read ->
+            { id = read.int64 "id"
+              email = email
+              hash = read.bytes "password"
+              salt = read.bytes "salt" })
+    |> Async.map (
+        Result.map
+            (fun users ->
+                match List.tryHead users with
+                | Some user ->
+                    if (Crypto.sha256 password user.salt) = user.hash then
+                        Some { id = user.id; email = user.email }
+                    else
+                        None
+                | None -> None)
+    )
 
 let listProjects connection : Async<Result<ProjectName list, exn>> =
     connection

@@ -15,7 +15,7 @@ let main args =
     //        Sqlite.existingConnection (new SqliteConnection("Data Source=db.sqlite"))
 
     Database.createTables connection
-    
+
     Database.initTestData connection
 
     let getProjects: WebPart =
@@ -32,8 +32,20 @@ let main args =
 
     let app =
         choose [
-            path "/projects"
-            >=> choose [ GET >=> getProjects ]
+            Authentication.authenticateBasicAsync
+                (fun (email, password) ->
+                    async {
+                        let! result = Database.authenticateUser connection email password
+
+                        return
+                            match result with
+                            | Ok user -> user <> None
+                            | Error exn ->
+                                printfn $"%A{exn}"
+                                false
+                    })
+                (path "/projects"
+                 >=> choose [ GET >=> getProjects ])
         ]
 
     startWebServer defaultConfig app

@@ -3,6 +3,8 @@
 open System
 open Utils
 
+type User = { id: int64; email: string }
+
 type Project = string
 
 type ProjectName = string
