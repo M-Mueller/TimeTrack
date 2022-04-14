@@ -40,7 +40,7 @@ let initTestData connection =
     connection
     |> Sqlite.executeTransaction [
         "INSERT INTO Users(id, name, password, salt) VALUES (null, @name, @pwd, @salt)",
-        [ [ "@name", Sqlite.string "admin@example.com"
+        [ [ "@name", Sqlite.string "admin"
             "@pwd", Sqlite.bytes hash
             "@salt", Sqlite.bytes salt ] ]
 
@@ -71,7 +71,12 @@ let initTestData connection =
             "@user", Sqlite.int 1
             "@day", Sqlite.string "2022-04-07"
             "@hours", Sqlite.int 4
-            "@comment", Sqlite.string "Interviewing Bob" ] ]
+            "@comment", Sqlite.string "Interviewing Bob" ]
+          [ "@project", Sqlite.int 1
+            "@user", Sqlite.int 1
+            "@day", Sqlite.string "2022-04-06"
+            "@hours", Sqlite.int 3
+            "@comment", Sqlite.string "Interviewing John" ] ]
        ]
     |> (fun result ->
         match result with
@@ -92,25 +97,108 @@ let authenticateUser connection (name: string) (password: string) =
     |> Sqlite.parameters [
         "@name", Sqlite.string name
        ]
-    |> Sqlite.executeAsync
-        (fun read ->
-            { id = read.int64 "id"
-              name = name
-              hash = read.bytes "password"
-              salt = read.bytes "salt" })
+    |> Sqlite.executeAsync (fun read ->
+        { id = read.int64 "id"
+          name = name
+          hash = read.bytes "password"
+          salt = read.bytes "salt" })
     |> Async.map (
-        Result.map
-            (fun users ->
-                match List.tryHead users with
-                | Some user ->
-                    if (Crypto.sha256 password user.salt) = user.hash then
-                        Some { id = user.id; name = user.name }
-                    else
-                        None
-                | None -> None)
+        Result.map (fun users ->
+            match List.tryHead users with
+            | Some user ->
+                if (Crypto.sha256 password user.salt) = user.hash then
+                    Some { id = user.id; name = user.name }
+                else
+                    None
+            | None -> None)
     )
 
 let listProjects connection : Async<Result<ProjectName list, exn>> =
     connection
-    |> Sqlite.query "SELECT name from Projects"
+    |> Sqlite.query "SELECT name FROM Projects"
     |> Sqlite.executeAsync (fun read -> read.string "name")
+
+type internal WorkUnitDTO =
+    { id: int64
+      name: string
+      scheduledHours: decimal
+      day: System.DateTime option
+      hours: decimal option
+      comment: string option }
+
+let listUserProjects connection (username: string) (date: System.DateTime) : Async<Result<ScheduledProject list, exn>> =
+    // Combines rows repesenting WorkUnits of the same project into one ScheduledProject
+    let combineRows (projects: Map<int64, ScheduledProject>) (row: WorkUnitDTO) =
+        // Check whether we encountered this project before or create a new project otherwise
+        let project =
+            projects.TryFind row.id
+            |> Option.defaultValue
+                { name = row.name
+                  scheduledHours = decimal row.scheduledHours
+                  committedHoursOtherDays = decimal 0
+                  workUnits = [] }
+
+        // Either all values are set or not. Otherwise the query is wrong
+        assert
+            (Option.isSome row.day
+             && Option.isSome row.hours
+             && Option.isSome row.comment)
+            || (Option.isNone row.day
+                && Option.isNone row.hours
+                && Option.isNone row.comment)
+
+        let project =
+            // If this row represents a valid WorkUnit (can be null if a project doesn't have any associated WorkUnits)
+            match row.day, row.hours, row.comment with
+            | Some day, Some hours, Some comment ->
+                if day = date then
+                    // Add WorkUnits of the requested date
+                    { project with
+                        workUnits =
+                            { WorkUnit.hours = string hours
+                              comment = comment }
+                            :: project.workUnits }
+                else
+                    // Otherwise just add up the hours
+                    { project with
+                        committedHoursOtherDays =
+                            project.committedHoursOtherDays
+                            + (Option.defaultValue 0m row.hours) }
+            | _ -> project
+
+        projects.Add(row.id, project)
+
+
+    connection
+    |> Sqlite.query
+        """
+        SELECT p.id, p.name, sp.scheduledHours, wu.day, wu.hours, wu.comment
+        FROM Projects AS p
+        LEFT JOIN ScheduledProjects AS sp
+        ON sp.project=p.id AND month=@month AND year=@year
+        LEFT JOIN Users 
+        ON sp.user=Users.id AND Users.name=@username
+        LEFT JOIN WorkUnits AS wu
+        ON wu.project=p.id AND wu.User=Users.id
+        """
+    |> Sqlite.parameters [
+        "@username", Sqlite.string username
+        "@month", Sqlite.int date.Month
+        "@year", Sqlite.int date.Year
+       ]
+    |> Sqlite.executeAsync (fun read ->
+        { id = read.int64 "id"
+          name = read.string "name"
+          scheduledHours =
+            read.decimalOrNone "scheduledHours"
+            |> Option.defaultValue 0m
+          day = read.dateTimeOrNone "day"
+          hours = read.decimalOrNone "hours"
+          comment = read.stringOrNone "comment" })
+    |> Async.map (
+        Result.map (
+            List.fold combineRows (Map [])
+            >> Map.values
+            >> Seq.toList
+        )
+    )

@@ -10,3 +10,4 @@ Client/public/bundle.js
 Client/public/css/*.svg
 Client/public/css/doodle.css
 .idea/
+.ionide/

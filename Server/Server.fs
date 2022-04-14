@@ -6,25 +6,46 @@ open Suave.Filters
 open Suave.Operators
 open Fumble
 open Thoth.Json.Net
+open Project
 
 
 [<EntryPoint>]
 let main args =
     let connection =
         Sqlite.existingConnection (new SqliteConnection("Data Source=:memory:"))
-//        Sqlite.existingConnection (new SqliteConnection("Data Source=C:\Users\Mueller\Projects\TimeTrack\db.sqlite"))
+    // Sqlite.existingConnection (new SqliteConnection("Data Source=db.sqlite"))
 
     Database.createTables connection
 
     Database.initTestData connection
 
+    printfn
+        "%A"
+        (Database.listProjects connection
+         |> Async.RunSynchronously)
+
+    printfn
+        "%A"
+        (Database.listUserProjects connection "admin" (System.DateTime(2022, 4, 7))
+         |> Async.RunSynchronously)
+
     let getProjects: WebPart =
         fun (context: HttpContext) ->
             async {
-                let! projects = Database.listProjects connection
+                let username = context.userState[Authentication.UserNameKey] :?> string
+
+                let! projects = Database.listUserProjects connection username (System.DateTime(2022, 4, 7))
 
                 match projects with
-                | Ok projects -> return! Successful.OK(Encode.Auto.toString<string list> (4, projects)) context
+                | Ok projects ->
+                    return!
+                        Successful.OK
+                            (Encode.Auto.toString<ScheduledProject list> (
+                                4,
+                                projects,
+                                extra = (Extra.empty |> Extra.withDecimal)
+                            ))
+                            context
                 | Error exn ->
                     printfn $"%A{exn}"
                     return! ServerErrors.INTERNAL_ERROR "An internal database error occured" context
@@ -33,9 +54,9 @@ let main args =
     let app =
         choose [
             Authentication.authenticateBasicAsync
-                (fun (email, password) ->
+                (fun (username, password) ->
                     async {
-                        let! result = Database.authenticateUser connection email password
+                        let! result = Database.authenticateUser connection username password
 
                         return
                             match result with
