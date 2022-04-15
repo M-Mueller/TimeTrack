@@ -65,10 +65,20 @@ let main args =
                                 printfn $"%A{exn}"
                                 false
                     })
-                (path "/projects"
-                 >=> choose [ GET >=> getProjects ])
-        ]
+                (choose [
+                    path "/api/v1/projects"
+                    >=> choose [ GET >=> getProjects ]
 
-    startWebServer defaultConfig app
+                    GET >=> Files.browseHome
+
+                    RequestErrors.NOT_FOUND "Page not found."
+                 ])
+
+            ]
+
+    let homeFolder = System.IO.Path.GetFullPath "../Client/public"
+    printfn $"Using home folder: {homeFolder}"
+
+    startWebServer { defaultConfig with homeFolder = Some homeFolder } app
 
     0
