@@ -38,3 +38,7 @@ module Result =
         match result with
         | Ok _ -> None
         | Error error -> Some error
+
+module Async =
+    let map f computation =
+        async.Bind(computation, f >> async.Return)

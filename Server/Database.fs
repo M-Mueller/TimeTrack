@@ -2,7 +2,7 @@
 
 open Project
 open Fumble
-open Suave.Utils
+open Utils
 
 let createTables connection =
     connection
@@ -91,7 +91,7 @@ type internal UserDTO =
       hash: byte []
       salt: byte [] }
 
-let authenticateUser connection (name: string) (password: string) =
+let authenticateUser connection (name: string) (password: string) : Async<User option> =
     connection
     |> Sqlite.query "SELECT id, password, salt FROM Users WHERE name=@name"
     |> Sqlite.parameters [
@@ -102,16 +102,16 @@ let authenticateUser connection (name: string) (password: string) =
           name = name
           hash = read.bytes "password"
           salt = read.bytes "salt" })
-    |> Async.map (
-        Result.map (fun users ->
-            match List.tryHead users with
-            | Some user ->
+    |> Async.map (function
+        | Ok users ->
+            users
+            |> List.tryHead
+            |> Option.bind (fun user ->
                 if (Crypto.sha256 password user.salt) = user.hash then
                     Some { id = user.id; name = user.name }
                 else
-                    None
-            | None -> None)
-    )
+                    None)
+        | Error exn -> failwith exn.Message)
 
 let listProjects connection : Async<Result<ProjectName list, exn>> =
     connection

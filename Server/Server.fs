@@ -1,16 +1,24 @@
 ﻿module Server
 
-open Microsoft.Data.Sqlite
-open Suave
-open Suave.Filters
-open Suave.Operators
+open System
+
 open Fumble
+open Microsoft.Data.Sqlite
+
+open Falco
+open Falco.Routing
+open Falco.HostBuilder
+open Falco.Security
+
 open Thoth.Json.Net
+
 open Project
+open Auth
 
 
 [<EntryPoint>]
 let main args =
+
     let connection =
         Sqlite.existingConnection (new SqliteConnection("Data Source=:memory:"))
     // Sqlite.existingConnection (new SqliteConnection("Data Source=db.sqlite"))
@@ -19,66 +27,40 @@ let main args =
 
     Database.initTestData connection
 
-    printfn
-        "%A"
-        (Database.listProjects connection
-         |> Async.RunSynchronously)
-
-    printfn
-        "%A"
-        (Database.listUserProjects connection "admin" (System.DateTime(2022, 4, 7))
-         |> Async.RunSynchronously)
-
-    let getProjects: WebPart =
-        fun (context: HttpContext) ->
-            async {
-                let username = context.userState[Authentication.UserNameKey] :?> string
-
-                let! projects = Database.listUserProjects connection username (System.DateTime(2022, 4, 7))
+    let projectsHandler (user: User) : HttpHandler =
+        fun ctx ->
+            task {
+                let! projects = Database.listUserProjects connection user.name (System.DateTime(2022, 4, 7))
 
                 match projects with
                 | Ok projects ->
                     return!
-                        Successful.OK
-                            (Encode.Auto.toString<ScheduledProject list> (
-                                4,
-                                projects,
-                                extra = (Extra.empty |> Extra.withDecimal)
-                            ))
-                            context
+                        (Response.withContentType "application/json; charset=utf-8"
+                         >> Response.ofPlainText (
+                             Encode.Auto.toString<ScheduledProject list> (
+                                 4,
+                                 projects,
+                                 extra = (Extra.empty |> Extra.withDecimal)
+                             )
+                         ))
+                            ctx
                 | Error exn ->
                     printfn $"%A{exn}"
-                    return! ServerErrors.INTERNAL_ERROR "An internal database error occured" context
+                    return! Response.ofEmpty ctx
             }
 
-    let app =
-        choose [
-            Authentication.authenticateBasicAsync
-                (fun (username, password) ->
-                    async {
-                        let! result = Database.authenticateUser connection username password
+    let handle401 =
+        Response.withStatusCode 401
+        >> Response.withHeader "WWW-Authenticate" "Basic"
+        >> Response.ofPlainText "Authorization required"
 
-                        return
-                            match result with
-                            | Ok user -> user <> None
-                            | Error exn ->
-                                printfn $"%A{exn}"
-                                false
-                    })
-                (choose [
-                    path "/api/v1/projects"
-                    >=> choose [ GET >=> getProjects ]
+    let requireAuthentication handleOk =
+        ifAuthenticated (Database.authenticateUser connection) handleOk handle401
 
-                    GET >=> Files.browseHome
-
-                    RequestErrors.NOT_FOUND "Page not found."
-                 ])
-
-            ]
-
-    let homeFolder = System.IO.Path.GetFullPath "../Client/public"
-    printfn $"Using home folder: {homeFolder}"
-
-    startWebServer { defaultConfig with homeFolder = Some homeFolder } app
+    webHost [||] {
+        endpoints [
+            get "/api/v1/projects" (requireAuthentication projectsHandler)
+        ]
+    }
 
     0
