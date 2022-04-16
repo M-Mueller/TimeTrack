@@ -1,6 +1,6 @@
 ﻿module Database
 
-open Project
+open Domain
 open Fumble
 open Utils
 
@@ -11,7 +11,7 @@ let createTables connection =
         PRAGMA foreign_keys = ON;
         CREATE TABLE Users (id INTEGER PRIMARY KEY, name TEXT UNIQUE NOT NULL, password BLOB NOT NULL, salt BLOB NOT NULL);
         CREATE TABLE Projects (id INTEGER PRIMARY KEY, name TEXT UNIQUE NOT NULL);
-        CREATE TABLE ScheduledProjects (
+        CREATE TABLE AssignedProjects (
             project INTEGER NOT NULL REFERENCES Projects(id) ON DELETE CASCADE,
             user INTEGER NOT NULL REFERENCES Users(id) ON DELETE CASCADE,
             month INTEGER NOT NULL,
@@ -49,7 +49,7 @@ let initTestData connection =
           [ "@name", Sqlite.string "Admin" ]
           [ "@name", Sqlite.string "Super Duper App" ] ]
 
-        "INSERT INTO ScheduledProjects(project, user, month, year, scheduledHours) VALUES (@project, @user, @month, @year, @scheduled)",
+        "INSERT INTO AssignedProjects(project, user, month, year, scheduledHours) VALUES (@project, @user, @month, @year, @scheduled)",
         [ [ "@project", Sqlite.int 1
             "@user", Sqlite.int 1
             "@month", Sqlite.int 4
@@ -126,9 +126,9 @@ type internal WorkUnitDTO =
       hours: decimal option
       comment: string option }
 
-let listUserProjects connection (username: string) (date: System.DateTime) : Async<Result<ScheduledProject list, exn>> =
-    // Combines rows repesenting WorkUnits of the same project into one ScheduledProject
-    let combineRows (projects: Map<int64, ScheduledProject>) (row: WorkUnitDTO) =
+let listUserProjects connection (username: string) (date: System.DateTime) : Async<Result<DailyWorkLog list, exn>> =
+    // Combines rows repesenting WorkUnits of the same project into one DailyWorkLog
+    let combineRows (projects: Map<int64, DailyWorkLog>) (row: WorkUnitDTO) =
         // Check whether we encountered this project before or create a new project otherwise
         let project =
             projects.TryFind row.id
@@ -155,7 +155,7 @@ let listUserProjects connection (username: string) (date: System.DateTime) : Asy
                     // Add WorkUnits of the requested date
                     { project with
                         workUnits =
-                            { WorkUnit.hours = string hours
+                            { WorkUnit.hours = hours
                               comment = comment }
                             :: project.workUnits }
                 else
@@ -174,7 +174,7 @@ let listUserProjects connection (username: string) (date: System.DateTime) : Asy
         """
         SELECT p.id, p.name, sp.scheduledHours, wu.day, wu.hours, wu.comment
         FROM Projects AS p
-        LEFT JOIN ScheduledProjects AS sp
+        LEFT JOIN AssignedProjects AS sp
         ON sp.project=p.id AND month=@month AND year=@year
         LEFT JOIN Users 
         ON sp.user=Users.id AND Users.name=@username

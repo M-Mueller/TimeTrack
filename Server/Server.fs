@@ -13,7 +13,7 @@ open Microsoft.AspNetCore.Builder
 
 open Thoth.Json.Net
 
-open Project
+open Domain
 open Auth
 
 
@@ -38,7 +38,7 @@ let main args =
                     return!
                         (Response.withContentType "application/json; charset=utf-8"
                          >> Response.ofPlainText (
-                             Encode.Auto.toString<ScheduledProject list> (
+                             Encode.Auto.toString<DailyWorkLog list> (
                                  4,
                                  projects,
                                  extra = (Extra.empty |> Extra.withDecimal)

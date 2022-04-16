@@ -6,7 +6,7 @@
 
     <ItemGroup>
         <Compile Include="Utils.fs" />
-        <Compile Include="Project.fs" />
+        <Compile Include="Domain.fs" />
     </ItemGroup>
 
 </Project>

@@ -7,30 +7,41 @@ open Elmish.React
 open Feliz
 
 open Utils
-open Project
+open Domain
 
 type Issue = { key: string; title: string }
 
 type State =
     { currentDate: DateTime
+      // Total hours the user should work on this day
       scheduledHours: decimal
 
+      // Project select in the combobox that will be added when clicking Add
       selectedProject: ProjectName
 
-      projects: ScheduledProject list
+      // Log entries for all possible projects. Individual workUnit might be empty.
+      projects: RawDailyWorkLog list
+      // Projects that are currently visible. Contains at least all projects with non-empty workUnits.
       activeProjects: Set<ProjectName>
 
       relatedIssues: Issue list }
 
-let selectableProjects (projects: ScheduledProject list) (activeProjects: Set<ProjectName>) : ProjectName list =
+let selectableProjects (projects: RawDailyWorkLog list) (activeProjects: Set<ProjectName>) : ProjectName list =
     projects
     |> List.map (fun p -> p.name)
     |> List.filter (fun n -> not (activeProjects.Contains n))
 
-let defaultSelectedProject (allProjects: ScheduledProject list) (activeProjects: Set<ProjectName>) : ProjectName =
+let defaultSelectedProject (allProjects: RawDailyWorkLog list) (activeProjects: Set<ProjectName>) : ProjectName =
     selectableProjects allProjects activeProjects
     |> List.tryHead
     |> Option.defaultValue ""
+
+
+/// Represents a single WorkUnit in the state.projects list
+type WorkUnitInProject =
+    { project: ProjectName
+      index: int
+      unit: RawWorkUnit }
 
 type Msg =
     | IncrementDate
@@ -49,8 +60,8 @@ let init () =
             scheduledHours = 42.0m
             committedHoursOtherDays = 20.0m
             workUnits =
-                [ { WorkUnit.hours = "4.0"
-                    comment = "Planning meeting" } ] }
+              [ { RawWorkUnit.hours = "4.0"
+                  comment = "Planning meeting" } ] }
           { name = "Admin"
             scheduledHours = 0.0m
             committedHoursOtherDays = 5.0m
@@ -72,40 +83,33 @@ let init () =
       projects = projects
       activeProjects = activeProjects
       relatedIssues =
-          [ { key = "HR-5"
-              title = "Interview Bob" }
-            { key = "SDA-51"
-              title = "Crashes randomly" }
-            { key = "SDA-42"
-              title = "Moar Features!" } ] }
+        [ { key = "HR-5"
+            title = "Interview Bob" }
+          { key = "SDA-51"
+            title = "Crashes randomly" }
+          { key = "SDA-42"
+            title = "Moar Features!" } ] }
 
 [<Emit("navigator.clipboard.writeText($0)")>]
 let writeToClipboard (text: string) : unit = jsNative
 
 let update (msg: Msg) (state: State) : State =
     match msg with
-    | IncrementDate ->
-        { state with
-              currentDate = state.currentDate.AddDays(1) }
+    | IncrementDate -> { state with currentDate = state.currentDate.AddDays(1) }
 
-    | DecrementDate ->
-        { state with
-              currentDate = state.currentDate.AddDays(-1) }
+    | DecrementDate -> { state with currentDate = state.currentDate.AddDays(-1) }
 
-    | ChangeSelectedProject selected ->
-        { state with
-              selectedProject = selected }
+    | ChangeSelectedProject selected -> { state with selectedProject = selected }
 
     | ActivateSelectedProject ->
         if state.activeProjects.Contains state.selectedProject then
             state
         else
-            let newActiveProjects =
-                Set.add state.selectedProject state.activeProjects
+            let newActiveProjects = Set.add state.selectedProject state.activeProjects
 
             { state with
-                  activeProjects = newActiveProjects
-                  selectedProject = defaultSelectedProject state.projects newActiveProjects }
+                activeProjects = newActiveProjects
+                selectedProject = defaultSelectedProject state.projects newActiveProjects }
 
     | RemoveActiveProject name ->
         let newActiveProjects = Set.remove name state.activeProjects
@@ -113,12 +117,11 @@ let update (msg: Msg) (state: State) : State =
         // Clear workUnits of removed project
         let newProjects =
             state.projects
-            |> List.map
-                (fun p ->
-                    if p.name = name then
-                        { p with workUnits = [] }
-                    else
-                        p)
+            |> List.map (fun p ->
+                if p.name = name then
+                    { p with workUnits = [] }
+                else
+                    p)
 
         // Reset selected if it was empty
         let newSelectedProject =
@@ -128,46 +131,40 @@ let update (msg: Msg) (state: State) : State =
                 state.selectedProject
 
         { state with
-              projects = newProjects
-              activeProjects = newActiveProjects
-              selectedProject = newSelectedProject }
+            projects = newProjects
+            activeProjects = newActiveProjects
+            selectedProject = newSelectedProject }
 
     | UpdateWorkUnit newWorkUnit ->
         let newProjects =
             state.projects
-            |> List.map
-                (fun p ->
-                    if p.name = newWorkUnit.project then
-                        { p with
-                              workUnits = List.updateAt newWorkUnit.index newWorkUnit.unit p.workUnits }
-                    else
-                        p)
+            |> List.map (fun p ->
+                if p.name = newWorkUnit.project then
+                    { p with workUnits = List.updateAt newWorkUnit.index newWorkUnit.unit p.workUnits }
+                else
+                    p)
 
         { state with projects = newProjects }
 
     | AppendWorkUnit newWorkUnit ->
         let newProjects =
             state.projects
-            |> List.map
-                (fun p ->
-                    if p.name = newWorkUnit.project then
-                        { p with
-                              workUnits = p.workUnits @ [ newWorkUnit.unit ] }
-                    else
-                        p)
+            |> List.map (fun p ->
+                if p.name = newWorkUnit.project then
+                    { p with workUnits = p.workUnits @ [ newWorkUnit.unit ] }
+                else
+                    p)
 
         { state with projects = newProjects }
 
     | RemoveLastWorkUnit workUnit ->
         let newProjects =
             state.projects
-            |> List.map
-                (fun p ->
-                    if p.name = workUnit.project then
-                        { p with
-                              workUnits = List.take (p.workUnits.Length - 1) p.workUnits }
-                    else
-                        p)
+            |> List.map (fun p ->
+                if p.name = workUnit.project then
+                    { p with workUnits = List.take (p.workUnits.Length - 1) p.workUnits }
+                else
+                    p)
 
         { state with projects = newProjects }
 
@@ -238,7 +235,7 @@ let renderAddProject (dispatch: Msg -> unit) (projects: ProjectName list) (selec
     ]
 
 let renderWorkUnit (dispatch: Msg -> unit) (maxIndex: int) (projectUnit: WorkUnitInProject) =
-    let dispatchChange (newUnit: WorkUnit) =
+    let dispatchChange (newUnit: RawWorkUnit) =
         let msg =
             if projectUnit.index = -1 then
                 AppendWorkUnit
@@ -278,22 +275,17 @@ let renderWorkUnit (dispatch: Msg -> unit) (maxIndex: int) (projectUnit: WorkUni
                 [ prop.style [ style.flexGrow 1 ] ]
                 [ prop.type'.text
                   prop.value projectUnit.unit.comment
-                  prop.onChange
-                      (fun comment ->
-                          dispatchChange
-                              { projectUnit.unit with
-                                    comment = comment }) ]
+                  prop.onChange (fun comment -> dispatchChange { projectUnit.unit with comment = comment }) ]
         ]
     ]
 
-let renderProject (dispatch: Msg -> unit) (project: ScheduledProject) =
+let renderProject (dispatch: Msg -> unit) (project: RawDailyWorkLog) =
     let projectUnits =
         project.workUnits
-        |> List.mapi
-            (fun index unit ->
-                { project = project.name
-                  index = index
-                  unit = unit })
+        |> List.mapi (fun index unit ->
+            { project = project.name
+              index = index
+              unit = unit })
 
     let maxIndex = List.length projectUnits - 1
 
@@ -409,10 +401,9 @@ let renderRelatedIssues (dispatch: Msg -> unit) (issues: Issue list) =
                     ]
                     prop.text "📋"
                     prop.title "Copy to clipboard"
-                    prop.onClick
-                        (fun _ ->
-                            WriteToClipboard $"[{issue.key}] {issue.title}"
-                            |> dispatch)
+                    prop.onClick (fun _ ->
+                        WriteToClipboard $"[{issue.key}] {issue.title}"
+                        |> dispatch)
 
                     ]
                 Html.text issue.title
