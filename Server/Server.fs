@@ -9,6 +9,7 @@ open Falco
 open Falco.Routing
 open Falco.HostBuilder
 open Falco.Security
+open Microsoft.AspNetCore.Builder
 
 open Thoth.Json.Net
 
@@ -57,7 +58,10 @@ let main args =
     let requireAuthentication handleOk =
         ifAuthenticated (Database.authenticateUser connection) handleOk handle401
 
-    webHost [||] {
+    webHost args {
+        use_static_files
+        use_if FalcoExtensions.IsDevelopment DeveloperExceptionPageExtensions.UseDeveloperExceptionPage
+
         endpoints [
             get "/api/v1/projects" (requireAuthentication projectsHandler)
         ]
