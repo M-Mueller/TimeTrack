@@ -18,4 +18,4 @@ watch-server: restore
 	dotnet watch run --project Server
 
 watch-client: restore
-	cd Client && dotnet fable watch src --run webpack
+	cd Client && dotnet fable watch src --run webpack --watch
