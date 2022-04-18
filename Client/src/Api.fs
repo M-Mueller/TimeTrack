@@ -26,7 +26,7 @@ let fromAsync (operation: Async<'msg>) : Cmd<'msg> =
     Cmd.ofSub delayedCmd
 
 
-let getProjects (message: RemoteData<DailyWorkLog list> -> 'msg) : Cmd<'msg> =
+let getProjects (message: RemoteData<RawDailyWorkLog list> -> 'msg) : Cmd<'msg> =
     let url = "/api/v1/projects"
 
     async {
@@ -34,10 +34,14 @@ let getProjects (message: RemoteData<DailyWorkLog list> -> 'msg) : Cmd<'msg> =
 
         let data =
             if statusCode = 200 then
-                match Decode.Auto.fromString<DailyWorkLog list> (responseText, extra = (Extra.empty |> Extra.withDecimal)) with
-                | Ok logs ->
-                    printfn $"request: {statusCode}"
-                    Success logs
+                let decoded = 
+                    Decode.Auto.fromString<DailyWorkLog list>
+                        (
+                            responseText,
+                            extra = (Extra.empty |> Extra.withDecimal)
+                        )
+                match decoded with
+                | Ok logs -> Success (List.map toRawDailyWorkLog logs)
                 | Error error -> Failure $"Decoding failed with {error}"
             else
                 Failure $"Requesting {url} failed with code {statusCode}"

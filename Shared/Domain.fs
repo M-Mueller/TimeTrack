@@ -50,8 +50,18 @@ let validate (unit: RawWorkUnit) : ValidatedWorkUnit =
                       Ok hours)
       comment = Ok unit.comment }
 
+let toRawWorkUnit (unit: WorkUnit) : RawWorkUnit =
+    { hours = string unit.hours
+      comment = unit.comment }
+
 type DailyWorkLog = GenericDailyWorkLog<WorkUnit> 
 type RawDailyWorkLog = GenericDailyWorkLog<RawWorkUnit> 
+
+let toRawDailyWorkLog (workLog : DailyWorkLog) : RawDailyWorkLog =
+    { name = workLog.name
+      scheduledHours = workLog.scheduledHours
+      committedHoursOtherDays = workLog.committedHoursOtherDays
+      workUnits = List.map toRawWorkUnit workLog.workUnits }
 
 /// Computes the total hours spend on a project this month
 let totalProjectHours (project: RawDailyWorkLog) =

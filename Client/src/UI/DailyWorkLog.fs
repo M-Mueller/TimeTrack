@@ -1,39 +1,130 @@
-module UI
+[<RequireQualifiedAccess>]
+module UI.DailyWorkLog
 
 open System
-open Elmish
-open Feliz
-
-open Utils
 open Domain
-open State
+open Feliz
+open Utils
 
-let renderDate (dispatch: Msg -> unit) (date: DateTime) =
-    Html.div [
-        prop.style [
-            style.display.flex
-            style.flexDirection.row
-            style.alignItems.center
-        ]
-        prop.children [
-            Html.button [
-                prop.role "button"
-                prop.classes [ "secondary; outline" ]
-                prop.onClick (fun _ -> dispatch DecrementDate)
-                prop.text "<"
-            ]
-            Html.span [
-                prop.style [ style.margin (0, 5) ]
-                prop.text (date.ToString("d.MM.yyyy"))
-            ]
-            Html.button [
-                prop.role "button"
-                prop.classes [ "secondary; outline" ]
-                prop.onClick (fun _ -> dispatch IncrementDate)
-                prop.text ">"
-            ]
-        ]
-    ]
+type State = {
+      // Project select in the combobox that will be added when clicking Add
+      selectedProject: ProjectName
+
+      // Log entries for all possible projects. Individual workUnit might be empty.
+      projects: RawDailyWorkLog list
+      // Projects that are currently visible. Contains at least all projects with non-empty workUnits.
+      activeProjects: Set<ProjectName> }
+
+let selectableProjects (projects: RawDailyWorkLog list) (activeProjects: Set<ProjectName>) : ProjectName list =
+    projects
+    |> List.map (fun p -> p.name)
+    |> List.filter (fun n -> not (activeProjects.Contains n))
+
+let private defaultSelectedProject
+    (allProjects: RawDailyWorkLog list)
+    (activeProjects: Set<ProjectName>)
+    : ProjectName =
+    selectableProjects allProjects activeProjects
+    |> List.tryHead
+    |> Option.defaultValue ""
+
+/// Represents a single WorkUnit in the state.projects list
+type WorkUnitInProject =
+    { project: ProjectName
+      index: int
+      unit: RawWorkUnit }
+
+type Msg =
+    | ChangeSelectedProject of ProjectName
+    | ActivateSelectedProject
+    | RemoveActiveProject of ProjectName
+    | UpdateWorkUnit of WorkUnitInProject
+    | AppendWorkUnit of WorkUnitInProject
+    | RemoveLastWorkUnit of WorkUnitInProject
+
+
+let init (projects: RawDailyWorkLog list) =
+    let activeProjects =
+        projects
+        |> List.filter (fun p -> p.scheduledHours <> 0m || not p.workUnits.IsEmpty)
+        |> List.map (fun p -> p.name)
+        |> Set
+
+    { selectedProject = defaultSelectedProject projects activeProjects
+      projects = projects
+      activeProjects = activeProjects }
+
+
+let update (msg: Msg) (state: State) : State =
+    match msg with
+    | ChangeSelectedProject selected -> { state with selectedProject = selected }
+
+    | ActivateSelectedProject ->
+        if state.activeProjects.Contains state.selectedProject then
+            state
+        else
+            let newActiveProjects = Set.add state.selectedProject state.activeProjects
+
+            { state with
+                activeProjects = newActiveProjects
+                selectedProject = defaultSelectedProject state.projects newActiveProjects }
+
+    | RemoveActiveProject name ->
+        let newActiveProjects = Set.remove name state.activeProjects
+
+        // Clear workUnits of removed project
+        let newProjects =
+            state.projects
+            |> List.map (fun p ->
+                if p.name = name then
+                    { p with workUnits = [] }
+                else
+                    p)
+
+        // Reset selected if it was empty
+        let newSelectedProject =
+            if String.IsNullOrWhiteSpace state.selectedProject then
+                defaultSelectedProject state.projects newActiveProjects
+            else
+                state.selectedProject
+
+        { state with
+            projects = newProjects
+            activeProjects = newActiveProjects
+            selectedProject = newSelectedProject }
+
+    | UpdateWorkUnit newWorkUnit ->
+        let newProjects =
+            state.projects
+            |> List.map (fun p ->
+                if p.name = newWorkUnit.project then
+                    { p with workUnits = List.updateAt newWorkUnit.index newWorkUnit.unit p.workUnits }
+                else
+                    p)
+
+        { state with projects = newProjects }
+
+    | AppendWorkUnit newWorkUnit ->
+        let newProjects =
+            state.projects
+            |> List.map (fun p ->
+                if p.name = newWorkUnit.project then
+                    { p with workUnits = p.workUnits @ [ newWorkUnit.unit ] }
+                else
+                    p)
+
+        { state with projects = newProjects }
+
+    | RemoveLastWorkUnit workUnit ->
+        let newProjects =
+            state.projects
+            |> List.map (fun p ->
+                if p.name = workUnit.project then
+                    { p with workUnits = List.take (p.workUnits.Length - 1) p.workUnits }
+                else
+                    p)
+
+        { state with projects = newProjects }
 
 
 let renderAddProject (dispatch: Msg -> unit) (projects: ProjectName list) (selected: ProjectName) =
@@ -176,31 +267,11 @@ let renderProject (dispatch: Msg -> unit) (project: RawDailyWorkLog) =
         ]
     ]
 
-let renderProjects (dispatch: Msg -> unit) (state: State) =
-    let totalHoursToday =
-        state.projects
-        |> List.map totalProjectHours
-        |> List.sum
 
+let renderProjects (dispatch: Msg -> unit) (state: State) =
     Html.div [
         prop.style [ style.flexGrow 1 ]
-        prop.children [
-            yield
-                Html.div [
-                    prop.style [
-                        style.marginTop 10
-                        if totalHoursToday = 0m then
-                            style.color.red
-                        elif totalHoursToday < state.scheduledHours then
-                            style.color.orange
-                        elif totalHoursToday = state.scheduledHours then
-                            style.color.black
-                        else
-                            style.color.green
-                    ]
-                    prop.text
-                        $"Total hours: {totalHoursToday}/{state.scheduledHours} ({totalHoursToday - state.scheduledHours})"
-                ]
+        prop.children [ //yield renderTotalHours state.projects state.scheduledHours
             yield
                 renderAddProject dispatch (selectableProjects state.projects state.activeProjects) state.selectedProject
             yield!
@@ -209,51 +280,4 @@ let renderProjects (dispatch: Msg -> unit) (state: State) =
                  |> List.sortBy (fun p -> p.name)
                  |> List.map (renderProject dispatch))
         ]
-    ]
-
-let renderRelatedIssues (dispatch: Msg -> unit) (issues: Issue list) =
-    let renderIssue issue =
-        Html.div [
-            prop.className "doodle-border"
-            prop.style [
-                style.margin 6
-                style.position.relative
-            ]
-            prop.children [
-                Html.a [
-                    prop.href $"http://example.com/issues/{issue.key}"
-                    prop.text issue.key
-                    prop.style [
-                        style.display.block
-                        style.fontSize (length.pt 16)
-                    ]
-                ]
-                Html.a [
-                    prop.style [
-                        style.cursor.pointer
-                        style.position.absolute
-                        style.right 2
-                        style.top 2
-                    ]
-                    prop.text "📋"
-                    prop.title "Copy to clipboard"
-                    prop.onClick (fun _ ->
-                        WriteToClipboard $"[{issue.key}] {issue.title}"
-                        |> dispatch)
-
-                    ]
-                Html.text issue.title
-            ]
-        ]
-
-    Html.div [
-        prop.className "doodle-border"
-        prop.style [
-            style.maxWidth (length.px 300)
-            style.marginLeft 20
-        ]
-        prop.children (
-            Html.text "Related JIRA Issues"
-            :: List.map renderIssue issues
-        )
     ]
