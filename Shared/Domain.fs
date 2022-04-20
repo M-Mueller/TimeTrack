@@ -3,7 +3,28 @@
 open System
 open Utils
 
-type User = { id: int64; name: string }
+type UserId = UserId of int64
+
+type WorkingHours =
+    { mon: int
+      tue: int
+      wed: int
+      thu: int
+      fri: int }
+
+let workingHoursForDate (hours: WorkingHours) (date : DateTime) =
+    match date.DayOfWeek with
+    | DayOfWeek.Monday -> hours.mon
+    | DayOfWeek.Tuesday -> hours.tue
+    | DayOfWeek.Wednesday -> hours.wed
+    | DayOfWeek.Thursday -> hours.thu
+    | DayOfWeek.Friday -> hours.fri
+    | _ -> 0
+
+
+type User =
+    { name: string
+      workingHours: WorkingHours }
 
 type ProjectName = string
 
@@ -16,9 +37,7 @@ type GenericDailyWorkLog<'a> =
       workUnits: 'a list }
 
 /// A single unit of work.
-type WorkUnit =
-    { hours: decimal
-      comment: string }
+type WorkUnit = { hours: decimal; comment: string }
 
 /// A single unit of work as entered by the user, that hasn't been validated yet
 type RawWorkUnit =
@@ -37,17 +56,16 @@ type ValidatedWorkUnit =
 /// Checks whether all values of a RawWorkUnit are valid.
 let validate (unit: RawWorkUnit) : ValidatedWorkUnit =
     { hours =
-          unit.hours
-          |> tryParseDecimal
-          |> Result.fromOption "Please enter a number"
-          |> Result.bind
-              (fun hours ->
-                  if hours <= 0.0m then
-                      Error "Must be larger than 0"
-                  elif hours > 24.0m then
-                      Error "Must be smaller than 24"
-                  else
-                      Ok hours)
+        unit.hours
+        |> tryParseDecimal
+        |> Result.fromOption "Please enter a number"
+        |> Result.bind (fun hours ->
+            if hours <= 0.0m then
+                Error "Must be larger than 0"
+            elif hours > 24.0m then
+                Error "Must be smaller than 24"
+            else
+                Ok hours)
       comment = Ok unit.comment }
 
 let toRawWorkUnit (unit: WorkUnit) : RawWorkUnit =
@@ -55,12 +73,12 @@ let toRawWorkUnit (unit: WorkUnit) : RawWorkUnit =
       comment = unit.comment }
 
 /// The work log of a single project on a single day.
-type DailyWorkLog = GenericDailyWorkLog<WorkUnit> 
+type DailyWorkLog = GenericDailyWorkLog<WorkUnit>
 
 /// Similar to DailyWorkLog, but the work units have not been validated yet.
-type RawDailyWorkLog = GenericDailyWorkLog<RawWorkUnit> 
+type RawDailyWorkLog = GenericDailyWorkLog<RawWorkUnit>
 
-let toRawDailyWorkLog (workLog : DailyWorkLog) : RawDailyWorkLog =
+let toRawDailyWorkLog (workLog: DailyWorkLog) : RawDailyWorkLog =
     { name = workLog.name
       scheduledHours = workLog.scheduledHours
       committedHoursOtherDays = workLog.committedHoursOtherDays

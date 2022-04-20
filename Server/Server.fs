@@ -24,7 +24,7 @@ let main args =
 
     let connection =
         Sqlite.existingConnection (new SqliteConnection("Data Source=:memory:"))
-    // Sqlite.existingConnection (new SqliteConnection("Data Source=db.sqlite"))
+        // Sqlite.existingConnection (new SqliteConnection("Data Source=db.sqlite"))
 
     Database.createTables connection
 
@@ -39,6 +39,31 @@ let main args =
         Response.withStatusCode 400
         >> Response.ofPlainText error
 
+    let handle404 =
+        Response.withStatusCode 404
+        >> Response.ofPlainText "Not found"
+
+    let getUserHandler (userid: UserId) : HttpHandler =
+        fun ctx -> 
+            task {
+                let! user = Database.getUser connection userid
+
+                match user with
+                | Some user ->
+                    return!
+                        (Response.withContentType "application/json; charset=utf-8"
+                         >> Response.ofPlainText (
+                             Encode.Auto.toString<User> (
+                                 4,
+                                 user,
+                                 extra = (Extra.empty |> Extra.withDecimal)
+                             )
+                         ))
+                            ctx
+                | None ->
+                    return! handle404 ctx
+            }
+
     let parseIsoDate (route: RouteCollectionReader) =
         route.TryGetString "date"
         |> Result.fromOption "Route requires a <data>"
@@ -48,10 +73,10 @@ let main args =
             with
             | _ -> Error "<date> must be in ISO format (yyyy-MM-dd)")
 
-    let dailyWorkLogHandler (user: User) (date: DateTime) : HttpHandler =
+    let dailyWorkLogHandler (user: UserId) (date: DateTime) : HttpHandler =
         fun ctx ->
             task {
-                let! projects = Database.listUserProjects connection user.name date
+                let! projects = Database.listUserProjects connection user date
 
                 match projects with
                 | Ok projects ->
@@ -70,7 +95,7 @@ let main args =
                     return! Response.ofEmpty ctx
             }
 
-    let relatedIssuesHandler (user: User) : HttpHandler =
+    let relatedIssuesHandler (user: UserId) : HttpHandler =
         let issues =
             [ { key = "HR-5"
                 title = "Interview Bob" }
@@ -90,6 +115,7 @@ let main args =
         use_if FalcoExtensions.IsDevelopment DeveloperExceptionPageExtensions.UseDeveloperExceptionPage
 
         endpoints [
+            get "/api/v1/user" (requireAuthentication getUserHandler)
             get
                 "/api/v1/dailyworklog/{date:required}"
                 (requireAuthentication (fun user -> Request.bindRoute parseIsoDate (dailyWorkLogHandler user) handle400))

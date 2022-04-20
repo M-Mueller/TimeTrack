@@ -37,23 +37,31 @@ let renderDate (dispatch: Msg -> unit) (date: DateTime) =
         ]
     ]
 
-let renderTotalHours (projects: RawDailyWorkLog list) (scheduledHours: decimal) =
-    let totalHoursToday = projects |> List.map totalProjectHours |> List.sum
+let renderTotalHours (projects: RawDailyWorkLog list) state =
+    match state.user with
+    | Api.Success user -> 
+        let totalHoursToday = projects |> List.map totalProjectHours |> List.sum
 
-    Html.div [
-        prop.style [
-            style.marginTop 10
-            if totalHoursToday = 0m then
-                style.color.red
-            elif totalHoursToday < scheduledHours then
-                style.color.orange
-            elif totalHoursToday = scheduledHours then
-                style.color.black
-            else
-                style.color.green
+        let workingHours = decimal (workingHoursForDate user.workingHours state.currentDate)
+
+        Html.div [
+            prop.style [
+                style.marginTop 10
+                if totalHoursToday = 0m then
+                    style.color.red
+                elif totalHoursToday < workingHours then
+                    style.color.orange
+                elif totalHoursToday = workingHours then
+                    style.color.black
+                else
+                    style.color.green
+            ]
+            prop.text $"Total Today: {totalHoursToday}/{workingHours} ({totalHoursToday - workingHours})"
         ]
-        prop.text $"Total hours: {totalHoursToday}/{scheduledHours} ({totalHoursToday - scheduledHours})"
-    ]
+    | Api.Failure error -> 
+        Html.text $"Could not load user info: {error}"
+    | _ ->
+        Html.div [] 
 
 
 let render (state: State) (dispatch: Msg -> unit) =
@@ -68,11 +76,14 @@ let render (state: State) (dispatch: Msg -> unit) =
                 Html.div [
                     prop.style [ style.flexGrow 1 ]
                     prop.children [
+
                         match state.workLogState with
                         | Api.NotAsked -> Html.text "Please reload the page"
                         | Api.Loading -> Html.text "Loading..."
                         | Api.Failure error -> Html.text $"Could not load work log: {error}"
-                        | Api.Success projects -> UI.DailyWorkLog.render (DailyWorkLogMsg >> dispatch) projects
+                        | Api.Success projects ->
+                            renderTotalHours projects.projects state
+                            UI.DailyWorkLog.render (DailyWorkLogMsg >> dispatch) projects
                     ]
                 ]
                 (match state.relatedIssues with

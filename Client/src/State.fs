@@ -11,6 +11,8 @@ type State =
       // Total hours the user should work on this day
       scheduledHours: decimal
 
+      user: Api.RemoteData<User>
+
       workLogState: Api.RemoteData<UI.DailyWorkLog.State>
 
       relatedIssues: Api.RemoteData<Issue list> }
@@ -20,10 +22,11 @@ type Msg =
     | DecrementDate
     | DailyWorkLogMsg of UI.DailyWorkLog.Msg
     | WriteToClipboard of string
+    | UserReceived of Api.RemoteData<User>
     | WorkLogReceived of Api.RemoteData<RawDailyWorkLog list>
     | RelatedIssuesReceived of Api.RemoteData<Issue list>
 
-let updateDate (date: DateTime) state =
+let changeDate (date: DateTime) state =
     { state with
         currentDate = date
         workLogState = Api.Loading
@@ -36,21 +39,29 @@ let updateDate (date: DateTime) state =
 let init () =
     let currentDate = DateTime.Now
 
-    updateDate
-        currentDate
-        { currentDate = currentDate
+    let state =
+        { currentDate = DateTime()
           scheduledHours = 8m
-          workLogState = Api.Loading
-          relatedIssues = Api.Loading }
+          user = Api.Loading
+          workLogState = Api.NotAsked
+          relatedIssues = Api.NotAsked }
+
+    let state, cmd = changeDate currentDate state
+
+    (state,
+     Cmd.batch [
+         cmd
+         Api.getUser UserReceived
+     ])
 
 [<Emit("navigator.clipboard.writeText($0)")>]
 let private writeToClipboard (text: string) : unit = jsNative
 
 let update (msg: Msg) (state: State) : State * Cmd<Msg> =
     match msg with
-    | IncrementDate -> updateDate (state.currentDate.AddDays(1)) state
+    | IncrementDate -> changeDate (state.currentDate.AddDays(1)) state
 
-    | DecrementDate -> updateDate (state.currentDate.AddDays(-1)) state
+    | DecrementDate -> changeDate (state.currentDate.AddDays(-1)) state
 
     | DailyWorkLogMsg msg' ->
         match state.workLogState with
@@ -60,6 +71,8 @@ let update (msg: Msg) (state: State) : State * Cmd<Msg> =
     | WriteToClipboard text ->
         writeToClipboard text
         state, Cmd.none
+
+    | UserReceived user -> { state with user = user }, Cmd.none
 
     | WorkLogReceived data ->
         { state with

@@ -27,6 +27,31 @@ let fromAsync (operation: Async<'msg>) : Cmd<'msg> =
     Cmd.ofSub delayedCmd
 
 
+let getUser (message: RemoteData<User> -> 'msg) : Cmd<'msg> =
+    let url = "/api/v1/user"
+
+    async {
+        let! (statusCode, responseText) = Http.get url
+
+        let data =
+            if statusCode = 200 then
+                let decoded = 
+                    Decode.Auto.fromString<User>
+                        (
+                            responseText,
+                            extra = (Extra.empty |> Extra.withDecimal)
+                        )
+                match decoded with
+                | Ok user -> Success user
+                | Error error -> Failure $"Decoding failed with {error}"
+            else
+                Failure $"Requesting {url} failed with code {statusCode}"
+
+        return message data
+    }
+    |> fromAsync
+
+
 let getDailyWorkLog (date: DateTime) (message: RemoteData<RawDailyWorkLog list> -> 'msg) : Cmd<'msg> =
     let url = $"""/api/v1/dailyworklog/{date.ToString "yyyy-MM-dd"}"""
 

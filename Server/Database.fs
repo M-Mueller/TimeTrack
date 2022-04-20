@@ -9,8 +9,18 @@ let createTables connection =
     |> Sqlite.command
         """
         PRAGMA foreign_keys = ON;
-        CREATE TABLE Users (id INTEGER PRIMARY KEY, name TEXT UNIQUE NOT NULL, password BLOB NOT NULL, salt BLOB NOT NULL);
-        CREATE TABLE Projects (id INTEGER PRIMARY KEY, name TEXT UNIQUE NOT NULL);
+        CREATE TABLE Users (
+            id INTEGER NOT NULL PRIMARY KEY,
+            name TEXT UNIQUE NOT NULL,
+            password BLOB NOT NULL,
+            salt BLOB NOT NULL,
+            hoursMon INTEGER NOT NULL,
+            hoursTue INTEGER NOT NULL,
+            hoursWed INTEGER NOT NULL,
+            hoursThu INTEGER NOT NULL,
+            hoursFri INTEGER NOT NULL
+        );
+        CREATE TABLE Projects (id INTEGER NOT NULL PRIMARY KEY, name TEXT UNIQUE NOT NULL);
         CREATE TABLE AssignedProjects (
             project INTEGER NOT NULL REFERENCES Projects(id) ON DELETE CASCADE,
             user INTEGER NOT NULL REFERENCES Users(id) ON DELETE CASCADE,
@@ -39,10 +49,15 @@ let initTestData connection =
 
     connection
     |> Sqlite.executeTransaction [
-        "INSERT INTO Users(id, name, password, salt) VALUES (null, @name, @pwd, @salt)",
+        "INSERT INTO Users(id, name, password, salt, hoursMon, hoursTue, hoursWed, hoursThu, hoursFri) VALUES (null, @name, @pwd, @salt, @hoursMon, @hoursTue, @hoursWed, @hoursThu, @hoursFri)",
         [ [ "@name", Sqlite.string "admin"
             "@pwd", Sqlite.bytes hash
-            "@salt", Sqlite.bytes salt ] ]
+            "@salt", Sqlite.bytes salt
+            "@hoursMon", Sqlite.int 8
+            "@hoursTue", Sqlite.int 8
+            "@hoursWed", Sqlite.int 8
+            "@hoursThu", Sqlite.int 8
+            "@hoursFri", Sqlite.int 6 ] ]
 
         "INSERT INTO Projects(id, name) VALUES (null, @name)",
         [ [ "@name", Sqlite.string "HR" ]
@@ -87,11 +102,10 @@ let initTestData connection =
 
 type internal UserDTO =
     { id: int64
-      name: string
       hash: byte []
       salt: byte [] }
 
-let authenticateUser connection (name: string) (password: string) : Async<User option> =
+let authenticateUser connection (name: string) (password: string) : Async<UserId option> =
     connection
     |> Sqlite.query "SELECT id, password, salt FROM Users WHERE name=@name"
     |> Sqlite.parameters [
@@ -99,7 +113,6 @@ let authenticateUser connection (name: string) (password: string) : Async<User o
        ]
     |> Sqlite.executeAsync (fun read ->
         { id = read.int64 "id"
-          name = name
           hash = read.bytes "password"
           salt = read.bytes "salt" })
     |> Async.map (function
@@ -108,9 +121,27 @@ let authenticateUser connection (name: string) (password: string) : Async<User o
             |> List.tryHead
             |> Option.bind (fun user ->
                 if (Crypto.sha256 password user.salt) = user.hash then
-                    Some { id = user.id; name = user.name }
+                    Some(UserId user.id)
                 else
                     None)
+        | Error exn -> failwith exn.Message)
+
+let getUser connection (UserId userid) : Async<User option> =
+    connection
+    |> Sqlite.query "SELECT name, hoursMon, hoursTue, hoursWed, hoursThu, hoursFri FROM Users WHERE id=@id"
+    |> Sqlite.parameters [
+        "@id", Sqlite.int64 userid
+       ]
+    |> Sqlite.executeAsync (fun read ->
+        { name = read.string "name"
+          workingHours =
+            { mon = read.int "hoursMon"
+              tue = read.int "hoursTue"
+              wed = read.int "hoursWed"
+              thu = read.int "hoursThu"
+              fri = read.int "hoursFri" } })
+    |> Async.map (function
+        | Ok users -> users |> List.tryHead
         | Error exn -> failwith exn.Message)
 
 let listProjects connection : Async<Result<ProjectName list, exn>> =
@@ -126,7 +157,7 @@ type internal WorkUnitDTO =
       hours: decimal option
       comment: string option }
 
-let listUserProjects connection (username: string) (date: System.DateTime) : Async<Result<DailyWorkLog list, exn>> =
+let listUserProjects connection (UserId userid) (date: System.DateTime) : Async<Result<DailyWorkLog list, exn>> =
     // Combines rows repesenting WorkUnits of the same project into one DailyWorkLog
     let combineRows (projects: Map<int64, DailyWorkLog>) (row: WorkUnitDTO) =
         // Check whether we encountered this project before or create a new project otherwise
@@ -172,17 +203,23 @@ let listUserProjects connection (username: string) (date: System.DateTime) : Asy
     connection
     |> Sqlite.query
         """
-        SELECT p.id, p.name, sp.scheduledHours, wu.day, wu.hours, wu.comment
+        SELECT
+            p.id,
+            p.name,
+            sp.scheduledHours,
+            wu.day,
+            wu.hours,
+            wu.comment
         FROM Projects AS p
         LEFT JOIN AssignedProjects AS sp
         ON sp.project=p.id AND month=@month AND year=@year
-        LEFT JOIN Users 
-        ON sp.user=Users.id AND Users.name=@username
+        LEFT JOIN Users AS u
+        ON sp.user=u.id AND u.id=@userid
         LEFT JOIN WorkUnits AS wu
-        ON wu.project=p.id AND wu.User=Users.id
+        ON wu.project=p.id AND wu.User=u.id
         """
     |> Sqlite.parameters [
-        "@username", Sqlite.string username
+        "@userid", Sqlite.int64 userid
         "@month", Sqlite.int date.Month
         "@year", Sqlite.int date.Year
        ]
