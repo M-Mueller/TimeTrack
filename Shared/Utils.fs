@@ -1,5 +1,7 @@
 ﻿module Utils
 
+open System
+
 let tryParseInt (input: string) : Option<int> =
     try
         Some(int input)
@@ -11,7 +13,7 @@ let tryParseFloat (input: string) : Option<float> =
         Some(float input)
     with
     | _ -> None
-    
+
 let tryParseDecimal (input: string) : Option<decimal> =
     try
         Some(decimal input)
@@ -23,7 +25,7 @@ module Result =
         match option with
         | Some value -> Ok value
         | None -> Error error
-        
+
     let toOption option =
         match option with
         | Ok value -> Some value

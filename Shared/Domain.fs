@@ -54,7 +54,10 @@ let toRawWorkUnit (unit: WorkUnit) : RawWorkUnit =
     { hours = string unit.hours
       comment = unit.comment }
 
+/// The work log of a single project on a single day.
 type DailyWorkLog = GenericDailyWorkLog<WorkUnit> 
+
+/// Similar to DailyWorkLog, but the work units have not been validated yet.
 type RawDailyWorkLog = GenericDailyWorkLog<RawWorkUnit> 
 
 let toRawDailyWorkLog (workLog : DailyWorkLog) : RawDailyWorkLog =

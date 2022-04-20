@@ -1,3 +1,8 @@
+/// Component that renders a list of DailyWorkLogs.
+/// The user can create work units by entering hours and comments.
+/// By default, only projects that already contain work units or
+/// projects that have an assigned target are shown.
+/// The user can add any other project from a list.
 [<RequireQualifiedAccess>]
 module UI.DailyWorkLog
 
@@ -6,7 +11,8 @@ open Domain
 open Feliz
 open Utils
 
-type State = {
+type State =
+    {
       // Project select in the combobox that will be added when clicking Add
       selectedProject: ProjectName
 
@@ -241,21 +247,6 @@ let renderProject (dispatch: Msg -> unit) (project: RawDailyWorkLog) =
                         ]
                     ]
                  ])
-            yield
-                Html.header [
-                    prop.style [
-                        style.display.flex
-                        style.flexDirection.row
-                        style.alignItems.center
-                    ]
-                    prop.children [
-                        Html.h5 $"Total: {totalHours} hours"
-                        Html.span [
-                            prop.style [ style.flexGrow 1 ]
-                        ]
-                        Html.h5 $"{project.committedHoursOtherDays + totalHours} / {project.scheduledHours} scheduled"
-                    ]
-                ]
             yield! (List.map (renderWorkUnit dispatch maxIndex) projectUnits)
             yield
                 (renderWorkUnit
@@ -264,11 +255,26 @@ let renderProject (dispatch: Msg -> unit) (project: RawDailyWorkLog) =
                     { project = project.name
                       index = -1
                       unit = { hours = ""; comment = "" } })
+            yield
+                Html.footer [
+                    prop.style [
+                        style.display.flex
+                        style.flexDirection.row
+                        style.alignItems.center
+                    ]
+                    prop.children [
+                        Html.text $"Total Today: {totalHours} hours"
+                        Html.span [
+                            prop.style [ style.flexGrow 1 ]
+                        ]
+                        Html.text $"This Month: {project.committedHoursOtherDays + totalHours} / {project.scheduledHours} scheduled"
+                    ]
+                ]
         ]
     ]
 
 
-let renderProjects (dispatch: Msg -> unit) (state: State) =
+let render (dispatch: Msg -> unit) (state: State) =
     Html.div [
         prop.style [ style.flexGrow 1 ]
         prop.children [ //yield renderTotalHours state.projects state.scheduledHours

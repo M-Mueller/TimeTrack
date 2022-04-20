@@ -1,6 +1,7 @@
 ﻿module Server
 
 open System
+open System.Globalization
 
 open Fumble
 open Microsoft.Data.Sqlite
@@ -15,6 +16,7 @@ open Thoth.Json.Net
 
 open Domain
 open Auth
+open Utils
 
 
 [<EntryPoint>]
@@ -28,10 +30,28 @@ let main args =
 
     Database.initTestData connection
 
-    let projectsHandler (user: User) : HttpHandler =
+    let handle401 =
+        Response.withStatusCode 401
+        >> Response.withHeader "WWW-Authenticate" "Basic"
+        >> Response.ofPlainText "Authorization required"
+
+    let handle400 error =
+        Response.withStatusCode 400
+        >> Response.ofPlainText error
+
+    let parseIsoDate (route: RouteCollectionReader) =
+        route.TryGetString "date"
+        |> Result.fromOption "Route requires a <data>"
+        |> Result.bind (fun input ->
+            try
+                Ok(DateTime.ParseExact(input, "yyyy-MM-dd", CultureInfo.InvariantCulture))
+            with
+            | _ -> Error "<date> must be in ISO format (yyyy-MM-dd)")
+
+    let dailyWorkLogHandler (user: User) (date: DateTime) : HttpHandler =
         fun ctx ->
             task {
-                let! projects = Database.listUserProjects connection user.name (System.DateTime(2022, 4, 7))
+                let! projects = Database.listUserProjects connection user.name date
 
                 match projects with
                 | Ok projects ->
@@ -50,10 +70,17 @@ let main args =
                     return! Response.ofEmpty ctx
             }
 
-    let handle401 =
-        Response.withStatusCode 401
-        >> Response.withHeader "WWW-Authenticate" "Basic"
-        >> Response.ofPlainText "Authorization required"
+    let relatedIssuesHandler (user: User) : HttpHandler =
+        let issues =
+            [ { key = "HR-5"
+                title = "Interview Bob" }
+              { key = "SDA-51"
+                title = "Crashes randomly" }
+              { key = "SDA-42"
+                title = "Moar Features!" } ]
+
+        (Response.withContentType "application/json; charset=utf-8"
+         >> Response.ofPlainText (Encode.Auto.toString<Issue list> (4, issues)))
 
     let requireAuthentication handleOk =
         ifAuthenticated (Database.authenticateUser connection) handleOk handle401
@@ -63,7 +90,11 @@ let main args =
         use_if FalcoExtensions.IsDevelopment DeveloperExceptionPageExtensions.UseDeveloperExceptionPage
 
         endpoints [
-            get "/api/v1/projects" (requireAuthentication projectsHandler)
+            get
+                "/api/v1/dailyworklog/{date:required}"
+                (requireAuthentication (fun user -> Request.bindRoute parseIsoDate (dailyWorkLogHandler user) handle400))
+
+            get "/api/v1/relatedIssues" (requireAuthentication relatedIssuesHandler)
         ]
     }
 

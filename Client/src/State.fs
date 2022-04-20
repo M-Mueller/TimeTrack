@@ -13,12 +13,7 @@ type State =
 
       workLogState: Api.RemoteData<UI.DailyWorkLog.State>
 
-      relatedIssues: Issue list }
-
-let selectableProjects (projects: RawDailyWorkLog list) (activeProjects: Set<ProjectName>) : ProjectName list =
-    projects
-    |> List.map (fun p -> p.name)
-    |> List.filter (fun n -> not (activeProjects.Contains n))
+      relatedIssues: Api.RemoteData<Issue list> }
 
 type Msg =
     | IncrementDate
@@ -26,28 +21,36 @@ type Msg =
     | DailyWorkLogMsg of UI.DailyWorkLog.Msg
     | WriteToClipboard of string
     | WorkLogReceived of Api.RemoteData<RawDailyWorkLog list>
+    | RelatedIssuesReceived of Api.RemoteData<Issue list>
+
+let updateDate (date: DateTime) state =
+    { state with
+        currentDate = date
+        workLogState = Api.Loading
+        relatedIssues = Api.Loading },
+    Cmd.batch [
+        Api.getDailyWorkLog date WorkLogReceived
+        Api.getRelatedIssues RelatedIssuesReceived
+    ]
 
 let init () =
-    { currentDate = DateTime.Now
-      scheduledHours = 8m
-      workLogState = Api.Loading
-      relatedIssues =
-        [ { key = "HR-5"
-            title = "Interview Bob" }
-          { key = "SDA-51"
-            title = "Crashes randomly" }
-          { key = "SDA-42"
-            title = "Moar Features!" } ] },
-    Api.getProjects WorkLogReceived
+    let currentDate = DateTime.Now
+
+    updateDate
+        currentDate
+        { currentDate = currentDate
+          scheduledHours = 8m
+          workLogState = Api.Loading
+          relatedIssues = Api.Loading }
 
 [<Emit("navigator.clipboard.writeText($0)")>]
 let private writeToClipboard (text: string) : unit = jsNative
 
 let update (msg: Msg) (state: State) : State * Cmd<Msg> =
     match msg with
-    | IncrementDate -> { state with currentDate = state.currentDate.AddDays(1) }, Cmd.none
+    | IncrementDate -> updateDate (state.currentDate.AddDays(1)) state
 
-    | DecrementDate -> { state with currentDate = state.currentDate.AddDays(-1) }, Cmd.none
+    | DecrementDate -> updateDate (state.currentDate.AddDays(-1)) state
 
     | DailyWorkLogMsg msg' ->
         match state.workLogState with
@@ -67,3 +70,5 @@ let update (msg: Msg) (state: State) : State * Cmd<Msg> =
                 | Api.Failure error -> Api.Failure error
                 | Api.Success workLog -> Api.Success(UI.DailyWorkLog.init workLog) },
         Cmd.none
+
+    | RelatedIssuesReceived issues -> { state with relatedIssues = issues }, Cmd.none

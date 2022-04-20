@@ -1,5 +1,6 @@
 module Api
 
+open System
 open Fable.SimpleHttp
 open Elmish
 open Thoth.Json
@@ -26,8 +27,8 @@ let fromAsync (operation: Async<'msg>) : Cmd<'msg> =
     Cmd.ofSub delayedCmd
 
 
-let getProjects (message: RemoteData<RawDailyWorkLog list> -> 'msg) : Cmd<'msg> =
-    let url = "/api/v1/projects"
+let getDailyWorkLog (date: DateTime) (message: RemoteData<RawDailyWorkLog list> -> 'msg) : Cmd<'msg> =
+    let url = $"""/api/v1/dailyworklog/{date.ToString "yyyy-MM-dd"}"""
 
     async {
         let! (statusCode, responseText) = Http.get url
@@ -42,6 +43,26 @@ let getProjects (message: RemoteData<RawDailyWorkLog list> -> 'msg) : Cmd<'msg> 
                         )
                 match decoded with
                 | Ok logs -> Success (List.map toRawDailyWorkLog logs)
+                | Error error -> Failure $"Decoding failed with {error}"
+            else
+                Failure $"Requesting {url} failed with code {statusCode}"
+
+        return message data
+    }
+    |> fromAsync
+
+let getRelatedIssues (message: RemoteData<Issue list> -> 'msg) : Cmd<'msg> =
+    let url = "/api/v1/relatedIssues"
+
+    async {
+        let! (statusCode, responseText) = Http.get url
+
+        let data =
+            if statusCode = 200 then
+                let decoded = 
+                    Decode.Auto.fromString<Issue list>(responseText)
+                match decoded with
+                | Ok issues -> Success issues
                 | Error error -> Failure $"Decoding failed with {error}"
             else
                 Failure $"Requesting {url} failed with code {statusCode}"
