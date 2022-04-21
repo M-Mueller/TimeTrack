@@ -23,7 +23,7 @@ type Msg =
     | DailyWorkLogMsg of UI.DailyWorkLog.Msg
     | WriteToClipboard of string
     | UserReceived of Api.RemoteData<User>
-    | WorkLogReceived of Api.RemoteData<RawDailyWorkLog list>
+    | WorkLogReceived of Api.RemoteData<DailyWorkLog list>
     | RelatedIssuesReceived of Api.RemoteData<Issue list>
 
 let changeDate (date: DateTime) state =
@@ -77,11 +77,8 @@ let update (msg: Msg) (state: State) : State * Cmd<Msg> =
     | WorkLogReceived data ->
         { state with
             workLogState =
-                match data with
-                | Api.NotAsked -> Api.NotAsked
-                | Api.Loading -> Api.Loading
-                | Api.Failure error -> Api.Failure error
-                | Api.Success workLog -> Api.Success(UI.DailyWorkLog.init workLog) },
+                data
+                |> Api.RemoteData.map (List.map toRawDailyWorkLog >> UI.DailyWorkLog.init) },
         Cmd.none
 
     | RelatedIssuesReceived issues -> { state with relatedIssues = issues }, Cmd.none
