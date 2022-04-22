@@ -5,6 +5,7 @@ open Fable.Core
 open Elmish
 
 open Domain
+open ClientDomain
 
 type State =
     { currentDate: DateTime
@@ -21,6 +22,8 @@ type Msg =
     | IncrementDate
     | DecrementDate
     | DailyWorkLogMsg of UI.DailyWorkLog.Msg
+    | ResetDailyWorkLog
+    | CommitDailyWorkLog
     | WriteToClipboard of string
     | UserReceived of Api.RemoteData<User>
     | WorkLogReceived of Api.RemoteData<DailyWorkLog list>
@@ -67,6 +70,12 @@ let update (msg: Msg) (state: State) : State * Cmd<Msg> =
         match state.workLogState with
         | Api.Success state' -> { state with workLogState = Api.Success(UI.DailyWorkLog.update msg' state') }, Cmd.none
         | _ -> state, Cmd.none
+
+    | ResetDailyWorkLog ->
+        { state with workLogState = Api.Loading }, (Api.getDailyWorkLog state.currentDate WorkLogReceived)
+
+    | CommitDailyWorkLog ->
+        state, Cmd.none
 
     | WriteToClipboard text ->
         writeToClipboard text

@@ -8,6 +8,7 @@ open Feliz
 
 open Utils
 open Domain
+open ClientDomain
 open State
 
 let renderDate (dispatch: Msg -> unit) (date: DateTime) =
@@ -39,7 +40,7 @@ let renderDate (dispatch: Msg -> unit) (date: DateTime) =
 
 let renderTotalHours (projects: RawDailyWorkLog list) state =
     match state.user with
-    | Api.Success user -> 
+    | Api.Success user ->
         let totalHoursToday = projects |> List.map totalProjectHours |> List.sum
 
         let workingHours = decimal (workingHoursForDate user.workingHours state.currentDate)
@@ -58,10 +59,27 @@ let renderTotalHours (projects: RawDailyWorkLog list) state =
             ]
             prop.text $"Total Today: {totalHoursToday}/{workingHours} ({totalHoursToday - workingHours})"
         ]
-    | Api.Failure error -> 
-        Html.text $"Could not load user info: {error}"
-    | _ ->
-        Html.div [] 
+    | Api.Failure error -> Html.text $"Could not load user info: {error}"
+    | _ -> Html.div []
+
+let renderButtons dispatch =
+    Html.div [
+        prop.style [
+            style.display.flex
+            style.width (length.percent 100)
+            style.justifyContent.spaceBetween
+        ]
+        prop.children [
+            Html.button [
+                prop.onClick (fun _ -> dispatch ResetDailyWorkLog)
+                prop.children [ Html.text "Reset" ]
+            ]
+            Html.button [
+                prop.onClick (fun _ -> dispatch CommitDailyWorkLog)
+                prop.children [ Html.text "Commit" ]
+            ]
+        ]
+    ]
 
 
 let render (state: State) (dispatch: Msg -> unit) =
@@ -84,6 +102,7 @@ let render (state: State) (dispatch: Msg -> unit) =
                         | Api.Success projects ->
                             renderTotalHours projects.projects state
                             UI.DailyWorkLog.render (DailyWorkLogMsg >> dispatch) projects
+                            renderButtons dispatch
                     ]
                 ]
                 (match state.relatedIssues with

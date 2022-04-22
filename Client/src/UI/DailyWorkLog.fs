@@ -8,6 +8,7 @@ module UI.DailyWorkLog
 
 open System
 open Domain
+open ClientDomain
 open Feliz
 open Utils
 
@@ -180,11 +181,11 @@ let renderWorkUnit (dispatch: Msg -> unit) (maxIndex: int) (projectUnit: WorkUni
         dispatch (msg { projectUnit with unit = newUnit })
 
     let hoursError =
-        if projectUnit.index = -1 then
+        if projectUnit.index = -1 && projectUnit.unit.isEmpty then
             // The last row is empty by default
             ""
         else
-            (validate projectUnit.unit).hours
+            projectUnit.unit.hours.value
             |> Result.getError
             |> Option.defaultValue ""
 
@@ -199,16 +200,21 @@ let renderWorkUnit (dispatch: Msg -> unit) (maxIndex: int) (projectUnit: WorkUni
                 hoursError
                 []
                 [ prop.style [ style.maxWidth 200 ]
-                  prop.type'.number
-                  prop.value projectUnit.unit.hours
-                  prop.onChange (fun hours -> dispatchChange { projectUnit.unit with hours = hours }) ]
+                  prop.type'.text
+                  prop.inputMode.decimal
+                  prop.value projectUnit.unit.hours.raw
+                  prop.onChange (fun hours ->
+                      dispatchChange
+                          { projectUnit.unit with hours = ValidatedValue.update projectUnit.unit.hours hours }) ]
             Elements.labeledInput
                 "Comment"
                 ""
                 [ prop.style [ style.flexGrow 1 ] ]
                 [ prop.type'.text
-                  prop.value projectUnit.unit.comment
-                  prop.onChange (fun comment -> dispatchChange { projectUnit.unit with comment = comment }) ]
+                  prop.value projectUnit.unit.comment.raw
+                  prop.onChange (fun comment ->
+                      dispatchChange
+                          { projectUnit.unit with comment = ValidatedValue.update projectUnit.unit.comment comment }) ]
         ]
     ]
 
@@ -254,7 +260,9 @@ let renderProject (dispatch: Msg -> unit) (project: RawDailyWorkLog) =
                     maxIndex
                     { project = project.name
                       index = -1
-                      unit = { hours = ""; comment = "" } })
+                      unit =
+                        { hours = ValidatedValue.create validateHours ""
+                          comment = ValidatedValue.create validateComment "" } })
             yield
                 Html.footer [
                     prop.style [
@@ -267,7 +275,8 @@ let renderProject (dispatch: Msg -> unit) (project: RawDailyWorkLog) =
                         Html.span [
                             prop.style [ style.flexGrow 1 ]
                         ]
-                        Html.text $"This Month: {project.committedHoursOtherDays + totalHours} / {project.scheduledHours} scheduled"
+                        Html.text
+                            $"This Month: {project.committedHoursOtherDays + totalHours} / {project.scheduledHours} scheduled"
                     ]
                 ]
         ]
@@ -277,7 +286,7 @@ let renderProject (dispatch: Msg -> unit) (project: RawDailyWorkLog) =
 let render (dispatch: Msg -> unit) (state: State) =
     Html.div [
         prop.style [ style.flexGrow 1 ]
-        prop.children [ //yield renderTotalHours state.projects state.scheduledHours
+        prop.children [
             yield
                 renderAddProject dispatch (selectableProjects state.projects state.activeProjects) state.selectedProject
             yield!

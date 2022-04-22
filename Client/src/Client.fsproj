@@ -5,6 +5,7 @@
     </PropertyGroup>
 
     <ItemGroup>
+        <Compile Include="ClientDomain.fs" />
         <Compile Include="Api.fs" />
         <Compile Include="Elements.fs" />
         <Compile Include="UI/RelatedIssues.fs" />
