@@ -57,7 +57,11 @@ let validateHours (hours: string) : Result<decimal, string> =
 
 /// Validates a raw comment string
 let validateComment (comment: string) : Result<string, string> =
-    Ok comment
+    let maxLength = 200
+    if comment.Length <= maxLength then
+        Ok comment
+    else
+        Error $"Comment must be shorter than {maxLength} characters"
 
 /// Represents a single JIRA issue
 type Issue = { key: string; title: string }

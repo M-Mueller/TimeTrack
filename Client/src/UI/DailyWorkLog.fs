@@ -205,7 +205,7 @@ let renderWorkUnit (dispatch: Msg -> unit) (maxIndex: int) (projectUnit: WorkUni
                   prop.value projectUnit.unit.hours.raw
                   prop.onChange (fun hours ->
                       dispatchChange
-                          { projectUnit.unit with hours = ValidatedValue.update projectUnit.unit.hours hours }) ]
+                          { projectUnit.unit with hours = projectUnit.unit.hours.Update hours }) ]
             Elements.labeledInput
                 "Comment"
                 ""
@@ -214,7 +214,7 @@ let renderWorkUnit (dispatch: Msg -> unit) (maxIndex: int) (projectUnit: WorkUni
                   prop.value projectUnit.unit.comment.raw
                   prop.onChange (fun comment ->
                       dispatchChange
-                          { projectUnit.unit with comment = ValidatedValue.update projectUnit.unit.comment comment }) ]
+                          { projectUnit.unit with comment = projectUnit.unit.comment.Update comment }) ]
         ]
     ]
 
@@ -261,8 +261,8 @@ let renderProject (dispatch: Msg -> unit) (project: RawDailyWorkLog) =
                     { project = project.name
                       index = -1
                       unit =
-                        { hours = ValidatedValue.create validateHours ""
-                          comment = ValidatedValue.create validateComment "" } })
+                        { hours = ValidatedHours.Create ""
+                          comment = ValidatedComment.Create "" } })
             yield
                 Html.footer [
                     prop.style [

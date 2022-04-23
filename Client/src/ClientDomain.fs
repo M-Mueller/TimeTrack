@@ -4,27 +4,32 @@ open System
 open Domain
 open Utils
 
-/// A value that needs to be validated from a raw user input.
-type ValidatedValue<'a> =
-    { raw: string
-      value: Result<'a, string>
-      validator: string -> Result<'a, string> }
+/// Hours that are validated from a raw string
+type ValidatedHours =
+    { raw : string
+      value : Result<decimal, string> }
 
-module ValidatedValue =
-    let create validator initial =
-        { raw = initial
-          value = validator initial
-          validator = validator }
+    static member Create raw =
+        { raw = raw; value = validateHours raw }
 
-    let update vv raw =
-        { vv with
-            raw = raw
-            value = vv.validator raw }
+    member this.Update raw =
+        { this with raw = raw; value = validateHours raw }
+
+/// Comment that is validated from a raw string
+type ValidatedComment =
+    { raw : string
+      value : Result<string, string> }
+
+    static member Create raw =
+        { raw = raw; value = validateComment raw }
+
+    member this.Update raw =
+        { this with raw = raw; value = validateComment raw }
 
 /// A single unit of work as entered by the user, that hasn't been validated yet
 type RawWorkUnit =
-    { hours: ValidatedValue<decimal>
-      comment: ValidatedValue<string> }
+    { hours: ValidatedHours
+      comment: ValidatedComment }
     member this.isEmpty =
         String.IsNullOrWhiteSpace this.comment.raw
         && String.IsNullOrWhiteSpace this.hours.raw
@@ -33,8 +38,8 @@ type RawWorkUnit =
 type RawDailyWorkLog = GenericDailyWorkLog<RawWorkUnit>
 
 let toRawWorkUnit (unit: WorkUnit) : RawWorkUnit =
-    { hours = ValidatedValue.create validateHours (string unit.hours)
-      comment = ValidatedValue.create validateComment (string unit.comment) }
+    { hours = ValidatedHours.Create (string unit.hours)
+      comment = ValidatedComment.Create (string unit.comment) }
 
 let toRawDailyWorkLog (workLog: DailyWorkLog) : RawDailyWorkLog =
     { name = workLog.name
