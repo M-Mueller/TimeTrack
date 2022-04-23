@@ -7,8 +7,9 @@ open Elmish.React
 open Feliz
 
 open Utils
-open Domain
-open ClientDomain
+open Domain.User
+open Domain.RawDailyWorkLog
+open Domain.Misc
 open State
 
 let renderDate (dispatch: Msg -> unit) (date: DateTime) =

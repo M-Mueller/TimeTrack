@@ -5,7 +5,10 @@ open Fable.SimpleHttp
 open Elmish
 open Thoth.Json
 
-open Domain
+open Domain.User
+open Domain.DailyWorkLog
+open Domain.RawDailyWorkLog
+open Domain.Misc
 
 type RemoteData<'value> =
     | NotAsked
@@ -22,7 +25,7 @@ module RemoteData =
         | Success v -> Success(f v)
 
 
-let fromAsync (operation: Async<'msg>) : Cmd<'msg> =
+let internal fromAsync (operation: Async<'msg>) : Cmd<'msg> =
     let delayedCmd (dispatch: 'msg -> unit) : unit =
         let delayedDispatch =
             async {

@@ -7,8 +7,8 @@
 module UI.DailyWorkLog
 
 open System
-open Domain
-open ClientDomain
+open Domain.RawDailyWorkLog
+open Domain.Misc
 open Feliz
 open Utils
 

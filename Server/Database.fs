@@ -1,7 +1,9 @@
 ﻿module Database
 
-open Domain
 open Fumble
+open Domain.User
+open Domain.DailyWorkLog
+open Domain.Misc
 open Utils
 
 let createTables connection =

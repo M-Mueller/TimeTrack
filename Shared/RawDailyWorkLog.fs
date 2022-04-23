@@ -1,8 +1,29 @@
-module ClientDomain
+module Domain.RawDailyWorkLog
 
 open System
-open Domain
 open Utils
+open Domain.DailyWorkLog
+
+/// Validates a raw hours string
+let validateHours (hours: string) : Result<decimal, string> =
+    hours
+    |> tryParseDecimal
+    |> Result.fromOption "Please enter a number"
+    |> Result.bind (fun hours ->
+        if hours <= 0.0m then
+            Error "Must be larger than 0"
+        elif hours > 24.0m then
+            Error "Must be smaller than 24"
+        else
+            Ok hours)
+
+/// Validates a raw comment string
+let validateComment (comment: string) : Result<string, string> =
+    let maxLength = 200
+    if comment.Length <= maxLength then
+        Ok comment
+    else
+        Error $"Comment must be shorter than {maxLength} characters"
 
 /// Hours that are validated from a raw string
 type ValidatedHours =

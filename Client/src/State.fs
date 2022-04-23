@@ -4,8 +4,10 @@ open System
 open Fable.Core
 open Elmish
 
-open Domain
-open ClientDomain
+open Domain.User
+open Domain.DailyWorkLog
+open Domain.RawDailyWorkLog
+open Domain.Misc
 
 type State =
     { currentDate: DateTime

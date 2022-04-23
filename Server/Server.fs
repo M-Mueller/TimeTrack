@@ -14,7 +14,9 @@ open Microsoft.AspNetCore.Builder
 
 open Thoth.Json.Net
 
-open Domain
+open Domain.User
+open Domain.DailyWorkLog
+open Domain.Misc
 open Auth
 open Utils
 
@@ -73,7 +75,7 @@ let main args =
             with
             | _ -> Error "<date> must be in ISO format (yyyy-MM-dd)")
 
-    let dailyWorkLogHandler (user: UserId) (date: DateTime) : HttpHandler =
+    let getDailyWorkLogHandler (user: UserId) (date: DateTime) : HttpHandler =
         fun ctx ->
             task {
                 let! projects = Database.listUserProjects connection user date
@@ -94,6 +96,16 @@ let main args =
                     printfn $"%A{exn}"
                     return! Response.ofEmpty ctx
             }
+
+    let postDailyWorkLogHandler (user: UserId) (date : DateTime) : HttpHandler =
+        Response.ofEmpty
+        // fun ctx ->
+        //     task {
+        //         let! readResult = ctx.Request.BodyReader.ReadAsync()
+        //         let body = readResult.Buffer.ToString()
+
+        //         Decode.Auto.fromString<DailyWorkLog list>(body)
+        //     }
 
     let relatedIssuesHandler (user: UserId) : HttpHandler =
         let issues =
@@ -118,7 +130,10 @@ let main args =
             get "/api/v1/user" (requireAuthentication getUserHandler)
             get
                 "/api/v1/dailyworklog/{date:required}"
-                (requireAuthentication (fun user -> Request.bindRoute parseIsoDate (dailyWorkLogHandler user) handle400))
+                (requireAuthentication (fun user -> Request.bindRoute parseIsoDate (getDailyWorkLogHandler user) handle400))
+            post
+                "/api/v1/dailyworklog/{date:required}"
+                (requireAuthentication (fun user -> Request.bindRoute parseIsoDate (postDailyWorkLogHandler user) handle400))
 
             get "/api/v1/relatedIssues" (requireAuthentication relatedIssuesHandler)
         ]
