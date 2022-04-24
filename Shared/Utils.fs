@@ -41,6 +41,17 @@ module Result =
         | Ok _ -> None
         | Error error -> Some error
 
+module List =
+    let flattenOption (input: List<'a option>) : List<'a> option =
+        List.foldBack
+            (fun (value: 'a option) (state: List<'a> option) ->
+                match state, value with
+                | Some state, Some value -> Some(value :: state)
+                | _ -> None)
+            input
+            (Some [])
+
+
 module Async =
     let map f computation =
         async.Bind(computation, f >> async.Return)

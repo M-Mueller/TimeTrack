@@ -16,6 +16,7 @@ open Thoth.Json.Net
 
 open Domain.User
 open Domain.DailyWorkLog
+open Domain.RawDailyWorkLog
 open Domain.Misc
 open Auth
 open Utils
@@ -26,7 +27,7 @@ let main args =
 
     let connection =
         Sqlite.existingConnection (new SqliteConnection("Data Source=:memory:"))
-        // Sqlite.existingConnection (new SqliteConnection("Data Source=db.sqlite"))
+    // Sqlite.existingConnection (new SqliteConnection("Data Source=db.sqlite"))
 
     Database.createTables connection
 
@@ -37,16 +38,16 @@ let main args =
         >> Response.withHeader "WWW-Authenticate" "Basic"
         >> Response.ofPlainText "Authorization required"
 
-    let handle400 error =
+    let handleBadRequest error =
         Response.withStatusCode 400
         >> Response.ofPlainText error
 
-    let handle404 =
+    let handleNotFound =
         Response.withStatusCode 404
         >> Response.ofPlainText "Not found"
 
     let getUserHandler (userid: UserId) : HttpHandler =
-        fun ctx -> 
+        fun ctx ->
             task {
                 let! user = Database.getUser connection userid
 
@@ -55,15 +56,10 @@ let main args =
                     return!
                         (Response.withContentType "application/json; charset=utf-8"
                          >> Response.ofPlainText (
-                             Encode.Auto.toString<User> (
-                                 4,
-                                 user,
-                                 extra = (Extra.empty |> Extra.withDecimal)
-                             )
+                             Encode.Auto.toString<User> (4, user, extra = (Extra.empty |> Extra.withDecimal))
                          ))
                             ctx
-                | None ->
-                    return! handle404 ctx
+                | None -> return! handleNotFound ctx
             }
 
     let parseIsoDate (route: RouteCollectionReader) =
@@ -97,15 +93,31 @@ let main args =
                     return! Response.ofEmpty ctx
             }
 
-    let postDailyWorkLogHandler (user: UserId) (date : DateTime) : HttpHandler =
-        Response.ofEmpty
-        // fun ctx ->
-        //     task {
-        //         let! readResult = ctx.Request.BodyReader.ReadAsync()
-        //         let body = readResult.Buffer.ToString()
+    let postDailyWorkLogHandler (user: UserId) (date: DateTime) : HttpHandler =
+        fun ctx ->
+            task {
+                let! readResult = ctx.Request.BodyReader.ReadAsync()
+                let body = readResult.Buffer.ToString()
 
-        //         Decode.Auto.fromString<DailyWorkLog list>(body)
-        //     }
+                match Decode.Auto.fromString<RawDailyWorkLog list> (body) with
+                | Ok worklogs ->
+                    let worklogs =
+                        worklogs
+                        |> List.map validateRawDailyWorkLog
+                        |> List.flattenOption
+
+                    match worklogs with
+                    | Some worklogs ->
+                        let! foo =
+                            worklogs
+                            |> List.map (fun worklog ->
+                                Database.assignProjectWorkUnits connection user worklog.name date worklog.workUnits)
+                            |> Async.Sequential
+
+                        return Response.ofPlainText "Success" ctx
+                    | None -> return handleBadRequest "DailyWorkLog contains invalid values" ctx
+                | Error error -> return handleBadRequest error ctx
+            }
 
     let relatedIssuesHandler (user: UserId) : HttpHandler =
         let issues =
@@ -130,10 +142,12 @@ let main args =
             get "/api/v1/user" (requireAuthentication getUserHandler)
             get
                 "/api/v1/dailyworklog/{date:required}"
-                (requireAuthentication (fun user -> Request.bindRoute parseIsoDate (getDailyWorkLogHandler user) handle400))
+                (requireAuthentication (fun user ->
+                    Request.bindRoute parseIsoDate (getDailyWorkLogHandler user) handleBadRequest))
             post
                 "/api/v1/dailyworklog/{date:required}"
-                (requireAuthentication (fun user -> Request.bindRoute parseIsoDate (postDailyWorkLogHandler user) handle400))
+                (requireAuthentication (fun user ->
+                    Request.bindRoute parseIsoDate (postDailyWorkLogHandler user) handleBadRequest))
 
             get "/api/v1/relatedIssues" (requireAuthentication relatedIssuesHandler)
         ]

@@ -1,5 +1,6 @@
 ﻿module Database
 
+open System
 open Fumble
 open Domain.User
 open Domain.DailyWorkLog
@@ -155,11 +156,11 @@ type internal WorkUnitDTO =
     { id: int64
       name: string
       scheduledHours: decimal
-      day: System.DateTime option
+      day: DateTime option
       hours: decimal option
       comment: string option }
 
-let listUserProjects connection (UserId userid) (date: System.DateTime) : Async<Result<DailyWorkLog list, exn>> =
+let listUserProjects connection (UserId userid) (date: DateTime) : Async<Result<DailyWorkLog list, exn>> =
     // Combines rows repesenting WorkUnits of the same project into one DailyWorkLog
     let combineRows (projects: Map<int64, DailyWorkLog>) (row: WorkUnitDTO) =
         // Check whether we encountered this project before or create a new project otherwise
@@ -241,3 +242,36 @@ let listUserProjects connection (UserId userid) (date: System.DateTime) : Async<
             >> Seq.toList
         )
     )
+
+let assignProjectWorkUnits connection (UserId user) (project: ProjectName) (date: DateTime) (workUnits: WorkUnit list) =
+    async {
+        let! projectids =
+            connection
+            |> Sqlite.query "SELECT id from Projects WHERE name=@name"
+            |> Sqlite.parameters [
+                "@name", Sqlite.string project
+               ]
+            |> Sqlite.executeAsync (fun read -> read.int64 "id")
+
+        let projectid =
+            match projectids with
+            | Ok [ projectid ] -> projectid
+            | Ok _ -> failwith "Expected one project id, got several"
+            | Error exn -> raise exn
+
+        let rows =
+            workUnits
+            |> List.map (fun workUnit ->
+                [ "@project", Sqlite.int64 projectid
+                  "@user", Sqlite.int64 user
+                  "@day", Sqlite.string (date.ToString("yyyy-MM-dd"))
+                  "@hours", Sqlite.decimal workUnit.hours
+                  "@comment", Sqlite.string workUnit.comment ])
+
+        return
+            connection
+            |> Sqlite.executeTransactionAsync [
+                "INSERT INTO WorkUnits(project, user, day, hours, comment) VALUES (@project, @user, @day, @hours, @comment)",
+                rows
+               ]
+    }

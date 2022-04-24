@@ -68,6 +68,23 @@ let toRawDailyWorkLog (workLog: DailyWorkLog) : RawDailyWorkLog =
       committedHoursOtherDays = workLog.committedHoursOtherDays
       workUnits = List.map toRawWorkUnit workLog.workUnits }
 
+let validateRawDailyWorkLog (raw : RawDailyWorkLog) : DailyWorkLog option =
+    let workUnits =
+        raw.workUnits
+        |> List.map (fun workUnit ->
+            match workUnit.hours.value, workUnit.comment.value with
+            | Ok hours, Ok comment -> Some { WorkUnit.hours = hours; comment = comment }
+            | _ -> None)
+        |> List.flattenOption
+
+    match workUnits with
+    | Some workUnits -> 
+        Some { name = raw.name
+               scheduledHours = raw.scheduledHours
+               committedHoursOtherDays = raw.committedHoursOtherDays
+               workUnits = workUnits }
+    | None -> None
+
 /// Computes the total hours spend on a project this month
 let totalProjectHours (project: RawDailyWorkLog) =
     project.workUnits
