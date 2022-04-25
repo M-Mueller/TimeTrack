@@ -10,6 +10,7 @@
         <Compile Include="Database.fs" />
         <Compile Include="ErrorHandler.fs" />
         <Compile Include="Handlers.fs" />
+        <Compile Include="ApiHandler.fs" />
         <Compile Include="Auth.fs" />
         <Compile Include="Server.fs" />
     </ItemGroup>
