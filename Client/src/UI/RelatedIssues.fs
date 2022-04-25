@@ -1,7 +1,7 @@
 [<RequireQualifiedAccess>]
 module UI.RelatedIssues
 
-open Domain.Misc
+open Domain
 open Feliz
 
 

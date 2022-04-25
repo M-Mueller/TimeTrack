@@ -7,9 +7,7 @@ open Elmish.React
 open Feliz
 
 open Utils
-open Domain.User
-open Domain.RawDailyWorkLog
-open Domain.Misc
+open Domain
 open State
 
 let renderDate (dispatch: Msg -> unit) (date: DateTime) =
@@ -39,12 +37,12 @@ let renderDate (dispatch: Msg -> unit) (date: DateTime) =
         ]
     ]
 
-let renderTotalHours (projects: RawDailyWorkLog list) state =
+let renderTotalHours (projects: DailyWorkLog list) state =
     match state.user with
     | Api.Success user ->
-        let totalHoursToday = projects |> List.map totalProjectHours |> List.sum
+        let totalHoursToday = projects |> List.map DailyWorkLog.totalProjectHours |> List.sum
 
-        let workingHours = decimal (workingHoursForDate user.workingHours state.currentDate)
+        let workingHours = decimal (User.workingHoursForDate user.workingHours state.currentDate)
 
         Html.div [
             prop.style [

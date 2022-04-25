@@ -2,9 +2,7 @@
 
 open System
 open Fumble
-open Domain.User
-open Domain.DailyWorkLog
-open Domain.Misc
+open Domain
 open Utils
 
 let createTables connection =
@@ -87,12 +85,18 @@ let initTestData connection =
         "INSERT INTO WorkUnits(project, user, day, hours, comment) VALUES (@project, @user, @day, @hours, @comment)",
         [ [ "@project", Sqlite.int 1
             "@user", Sqlite.int 1
-            "@day", Sqlite.string "2022-04-07"
+            "@day", Sqlite.string (DateTime.Now.ToString("yyyy-MM-dd"))
             "@hours", Sqlite.int 4
             "@comment", Sqlite.string "Interviewing Bob" ]
           [ "@project", Sqlite.int 1
             "@user", Sqlite.int 1
-            "@day", Sqlite.string "2022-04-06"
+            "@day",
+            Sqlite.string (
+                DateTime
+                    .Now
+                    .Add(TimeSpan(-1, 0, 0, 0))
+                    .ToString("yyyy-MM-dd")
+            )
             "@hours", Sqlite.int 3
             "@comment", Sqlite.string "Interviewing John" ] ]
        ]
@@ -100,8 +104,6 @@ let initTestData connection =
         match result with
         | Ok rows -> printfn $"Inserted {List.sum rows} rows"
         | Error exn -> failwith exn.Message)
-
-
 
 type internal UserDTO =
     { id: int64
@@ -145,7 +147,9 @@ let getUser connection (UserId userid) : Async<User option> =
               fri = read.int "hoursFri" } })
     |> Async.map (function
         | Ok users -> users |> List.tryHead
-        | Error exn -> failwith exn.Message)
+        | Error exn ->
+            printfn "%A" exn
+            None)
 
 let listProjects connection : Async<Result<ProjectName list, exn>> =
     connection
@@ -157,7 +161,7 @@ type internal WorkUnitDTO =
       name: string
       scheduledHours: decimal
       day: DateTime option
-      hours: decimal option
+      hours: string option
       comment: string option }
 
 let listUserProjects connection (UserId userid) (date: DateTime) : Async<Result<DailyWorkLog list, exn>> =
@@ -167,7 +171,8 @@ let listUserProjects connection (UserId userid) (date: DateTime) : Async<Result<
         let project =
             projects.TryFind row.id
             |> Option.defaultValue
-                { name = row.name
+                { projectId = row.id
+                  projectName = row.name
                   scheduledHours = decimal row.scheduledHours
                   committedHoursOtherDays = decimal 0
                   workUnits = [] }
@@ -189,15 +194,17 @@ let listUserProjects connection (UserId userid) (date: DateTime) : Async<Result<
                     // Add WorkUnits of the requested date
                     { project with
                         workUnits =
-                            { WorkUnit.hours = hours
-                              comment = comment }
+                            { WorkUnit.hours = ValidatedHours.Create hours
+                              comment = ValidatedComment.Create comment }
                             :: project.workUnits }
                 else
                     // Otherwise just add up the hours
                     { project with
                         committedHoursOtherDays =
                             project.committedHoursOtherDays
-                            + (Option.defaultValue 0m row.hours) }
+                            + (row.hours
+                               |> Option.bind tryParseDecimal
+                               |> Option.defaultValue 0m) }
             | _ -> project
 
         projects.Add(row.id, project)
@@ -233,7 +240,7 @@ let listUserProjects connection (UserId userid) (date: DateTime) : Async<Result<
             read.decimalOrNone "scheduledHours"
             |> Option.defaultValue 0m
           day = read.dateTimeOrNone "day"
-          hours = read.decimalOrNone "hours"
+          hours = read.stringOrNone "hours"
           comment = read.stringOrNone "comment" })
     |> Async.map (
         Result.map (
@@ -243,35 +250,33 @@ let listUserProjects connection (UserId userid) (date: DateTime) : Async<Result<
         )
     )
 
-let assignProjectWorkUnits connection (UserId user) (project: ProjectName) (date: DateTime) (workUnits: WorkUnit list) =
-    async {
-        let! projectids =
-            connection
-            |> Sqlite.query "SELECT id from Projects WHERE name=@name"
-            |> Sqlite.parameters [
-                "@name", Sqlite.string project
-               ]
-            |> Sqlite.executeAsync (fun read -> read.int64 "id")
+let assignProjectWorkUnits
+    connection
+    (UserId user)
+    (date: DateTime)
+    (projectWorkUnits: List<int64 * ValidatedWorkUnit list>)
+    =
+    let deleteRows =
+        projectWorkUnits
+        |> List.map (fun (projectId, workUnits) ->
+            [ "@project", Sqlite.int64 projectId
+              "@user", Sqlite.int64 user
+              "@day", Sqlite.string (date.ToString("yyyy-MM-dd")) ])
 
-        let projectid =
-            match projectids with
-            | Ok [ projectid ] -> projectid
-            | Ok _ -> failwith "Expected one project id, got several"
-            | Error exn -> raise exn
-
-        let rows =
+    let insertRows =
+        projectWorkUnits
+        |> List.map (fun (projectId, workUnits) ->
             workUnits
             |> List.map (fun workUnit ->
-                [ "@project", Sqlite.int64 projectid
+                [ "@project", Sqlite.int64 projectId
                   "@user", Sqlite.int64 user
                   "@day", Sqlite.string (date.ToString("yyyy-MM-dd"))
                   "@hours", Sqlite.decimal workUnit.hours
-                  "@comment", Sqlite.string workUnit.comment ])
+                  "@comment", Sqlite.string workUnit.comment ]))
+        |> List.concat
 
-        return
-            connection
-            |> Sqlite.executeTransactionAsync [
-                "INSERT INTO WorkUnits(project, user, day, hours, comment) VALUES (@project, @user, @day, @hours, @comment)",
-                rows
-               ]
-    }
+    connection
+    |> Sqlite.executeTransactionAsync [
+        "DELETE FROM WorkUnits WHERE project=@project AND user=@user AND day=@day", deleteRows
+        "INSERT INTO WorkUnits(project, user, day, hours, comment) VALUES (@project, @user, @day, @hours, @comment)", insertRows
+       ]

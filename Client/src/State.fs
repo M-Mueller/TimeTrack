@@ -4,10 +4,8 @@ open System
 open Fable.Core
 open Elmish
 
-open Domain.User
-open Domain.DailyWorkLog
-open Domain.RawDailyWorkLog
-open Domain.Misc
+open Domain
+open Utils
 
 type State =
     { currentDate: DateTime
@@ -30,6 +28,7 @@ type Msg =
     | UserReceived of Api.RemoteData<User>
     | WorkLogReceived of Api.RemoteData<DailyWorkLog list>
     | RelatedIssuesReceived of Api.RemoteData<Issue list>
+    | WorkLogCommitted of bool
 
 let changeDate (date: DateTime) state =
     { state with
@@ -77,7 +76,11 @@ let update (msg: Msg) (state: State) : State * Cmd<Msg> =
         { state with workLogState = Api.Loading }, (Api.getDailyWorkLog state.currentDate WorkLogReceived)
 
     | CommitDailyWorkLog ->
-        state, Cmd.none
+        match state.workLogState with
+        | Api.Success workLogState ->
+            state, Api.postDailyWorkLog state.currentDate workLogState.projects WorkLogCommitted 
+        | _ ->
+            state, Cmd.none
 
     | WriteToClipboard text ->
         writeToClipboard text
@@ -89,7 +92,10 @@ let update (msg: Msg) (state: State) : State * Cmd<Msg> =
         { state with
             workLogState =
                 data
-                |> Api.RemoteData.map (List.map toRawDailyWorkLog >> UI.DailyWorkLog.init) },
+                |> Api.RemoteData.map UI.DailyWorkLog.init },
         Cmd.none
 
     | RelatedIssuesReceived issues -> { state with relatedIssues = issues }, Cmd.none
+
+    | WorkLogCommitted success ->
+        { state with workLogState = Api.Loading }, (Api.getDailyWorkLog state.currentDate WorkLogReceived)

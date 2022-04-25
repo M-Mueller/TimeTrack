@@ -7,8 +7,7 @@
 module UI.DailyWorkLog
 
 open System
-open Domain.RawDailyWorkLog
-open Domain.Misc
+open Domain
 open Feliz
 open Utils
 
@@ -18,17 +17,17 @@ type State =
       selectedProject: ProjectName
 
       // Log entries for all possible projects. Individual workUnit might be empty.
-      projects: RawDailyWorkLog list
+      projects: DailyWorkLog list
       // Projects that are currently visible. Contains at least all projects with non-empty workUnits.
       activeProjects: Set<ProjectName> }
 
-let selectableProjects (projects: RawDailyWorkLog list) (activeProjects: Set<ProjectName>) : ProjectName list =
+let selectableProjects (projects: DailyWorkLog list) (activeProjects: Set<ProjectName>) : ProjectName list =
     projects
-    |> List.map (fun p -> p.name)
+    |> List.map (fun p -> p.projectName)
     |> List.filter (fun n -> not (activeProjects.Contains n))
 
 let private defaultSelectedProject
-    (allProjects: RawDailyWorkLog list)
+    (allProjects: DailyWorkLog list)
     (activeProjects: Set<ProjectName>)
     : ProjectName =
     selectableProjects allProjects activeProjects
@@ -39,7 +38,7 @@ let private defaultSelectedProject
 type WorkUnitInProject =
     { project: ProjectName
       index: int
-      unit: RawWorkUnit }
+      unit: WorkUnit }
 
 type Msg =
     | ChangeSelectedProject of ProjectName
@@ -50,11 +49,11 @@ type Msg =
     | RemoveLastWorkUnit of WorkUnitInProject
 
 
-let init (projects: RawDailyWorkLog list) =
+let init (projects: DailyWorkLog list) =
     let activeProjects =
         projects
         |> List.filter (fun p -> p.scheduledHours <> 0m || not p.workUnits.IsEmpty)
-        |> List.map (fun p -> p.name)
+        |> List.map (fun p -> p.projectName)
         |> Set
 
     { selectedProject = defaultSelectedProject projects activeProjects
@@ -83,7 +82,7 @@ let update (msg: Msg) (state: State) : State =
         let newProjects =
             state.projects
             |> List.map (fun p ->
-                if p.name = name then
+                if p.projectName = name then
                     { p with workUnits = [] }
                 else
                     p)
@@ -104,7 +103,7 @@ let update (msg: Msg) (state: State) : State =
         let newProjects =
             state.projects
             |> List.map (fun p ->
-                if p.name = newWorkUnit.project then
+                if p.projectName = newWorkUnit.project then
                     { p with workUnits = List.updateAt newWorkUnit.index newWorkUnit.unit p.workUnits }
                 else
                     p)
@@ -115,7 +114,7 @@ let update (msg: Msg) (state: State) : State =
         let newProjects =
             state.projects
             |> List.map (fun p ->
-                if p.name = newWorkUnit.project then
+                if p.projectName = newWorkUnit.project then
                     { p with workUnits = p.workUnits @ [ newWorkUnit.unit ] }
                 else
                     p)
@@ -126,7 +125,7 @@ let update (msg: Msg) (state: State) : State =
         let newProjects =
             state.projects
             |> List.map (fun p ->
-                if p.name = workUnit.project then
+                if p.projectName = workUnit.project then
                     { p with workUnits = List.take (p.workUnits.Length - 1) p.workUnits }
                 else
                     p)
@@ -169,7 +168,7 @@ let renderAddProject (dispatch: Msg -> unit) (projects: ProjectName list) (selec
     ]
 
 let renderWorkUnit (dispatch: Msg -> unit) (maxIndex: int) (projectUnit: WorkUnitInProject) =
-    let dispatchChange (newUnit: RawWorkUnit) =
+    let dispatchChange (newUnit: WorkUnit) =
         let msg =
             if projectUnit.index = -1 then
                 AppendWorkUnit
@@ -218,17 +217,17 @@ let renderWorkUnit (dispatch: Msg -> unit) (maxIndex: int) (projectUnit: WorkUni
         ]
     ]
 
-let renderProject (dispatch: Msg -> unit) (project: RawDailyWorkLog) =
+let renderProject (dispatch: Msg -> unit) (project: DailyWorkLog) =
     let projectUnits =
         project.workUnits
         |> List.mapi (fun index unit ->
-            { project = project.name
+            { project = project.projectName
               index = index
               unit = unit })
 
     let maxIndex = List.length projectUnits - 1
 
-    let totalHours = totalProjectHours project
+    let totalHours = DailyWorkLog.totalProjectHours project
 
     Html.article [
         prop.className "doodle-border"
@@ -241,7 +240,7 @@ let renderProject (dispatch: Msg -> unit) (project: RawDailyWorkLog) =
                         style.alignItems.center
                     ]
                     prop.children [
-                        Html.text project.name
+                        Html.text project.projectName
                         Html.span [
                             prop.style [ style.flexGrow 1 ]
                         ]
@@ -249,7 +248,7 @@ let renderProject (dispatch: Msg -> unit) (project: RawDailyWorkLog) =
                             prop.style [ style.color.red ]
                             prop.className [ "pseudo" ]
                             prop.text "X"
-                            prop.onClick (fun _ -> dispatch (RemoveActiveProject project.name))
+                            prop.onClick (fun _ -> dispatch (RemoveActiveProject project.projectName))
                         ]
                     ]
                  ])
@@ -258,7 +257,7 @@ let renderProject (dispatch: Msg -> unit) (project: RawDailyWorkLog) =
                 (renderWorkUnit
                     dispatch
                     maxIndex
-                    { project = project.name
+                    { project = project.projectName
                       index = -1
                       unit =
                         { hours = ValidatedHours.Create ""
@@ -291,8 +290,8 @@ let render (dispatch: Msg -> unit) (state: State) =
                 renderAddProject dispatch (selectableProjects state.projects state.activeProjects) state.selectedProject
             yield!
                 (state.projects
-                 |> List.filter (fun p -> state.activeProjects.Contains p.name)
-                 |> List.sortBy (fun p -> p.name)
+                 |> List.filter (fun p -> state.activeProjects.Contains p.projectName)
+                 |> List.sortBy (fun p -> p.projectName)
                  |> List.map (renderProject dispatch))
         ]
     ]

@@ -5,10 +5,7 @@ open Fable.SimpleHttp
 open Elmish
 open Thoth.Json
 
-open Domain.User
-open Domain.DailyWorkLog
-open Domain.RawDailyWorkLog
-open Domain.Misc
+open Domain
 
 type RemoteData<'value> =
     | NotAsked
@@ -37,14 +34,13 @@ let internal fromAsync (operation: Async<'msg>) : Cmd<'msg> =
 
     Cmd.ofSub delayedCmd
 
-let inline getRemoteData url (message: RemoteData<'data> -> 'msg) : Cmd<'msg> =
+let inline getRemoteData url (decoder: Decoder<'data>) (message: RemoteData<'data> -> 'msg) : Cmd<'msg> =
     async {
         let! (statusCode, responseText) = Http.get url
 
         let data =
             if statusCode = 200 then
-                let decoded =
-                    Decode.Auto.fromString<'data> (responseText, extra = (Extra.empty |> Extra.withDecimal))
+                let decoded = Decode.fromString decoder responseText
 
                 match decoded with
                 | Ok user -> Success user
@@ -57,12 +53,26 @@ let inline getRemoteData url (message: RemoteData<'data> -> 'msg) : Cmd<'msg> =
     |> fromAsync
 
 
-let getUser (message: RemoteData<User> -> 'msg) : Cmd<'msg> = getRemoteData "/api/v1/user" message
+let getUser (message: RemoteData<User> -> 'msg) : Cmd<'msg> = getRemoteData "/api/v1/user" User.decoder message
 
 let getDailyWorkLog (date: DateTime) (message: RemoteData<DailyWorkLog list> -> 'msg) : Cmd<'msg> =
     let url = $"""/api/v1/dailyworklog/{date.ToString "yyyy-MM-dd"}"""
 
-    getRemoteData url message
+    getRemoteData url (Decode.list DailyWorkLog.decoder) message
+
+let postDailyWorkLog (date: DateTime) (workLogs : DailyWorkLog list) (message: bool -> 'msg) : Cmd<'msg> =
+    let url = $"""/api/v1/dailyworklog/{date.ToString "yyyy-MM-dd"}"""
+    let body = 
+        workLogs
+        |> List.map DailyWorkLog.encoder
+        |> Encode.list
+        |> Encode.toString 4
+
+    async {
+        let! (statusCode, responseText) = Http.post url body
+        return message (statusCode = 200)
+    }
+    |> fromAsync
 
 let getRelatedIssues (message: RemoteData<Issue list> -> 'msg) : Cmd<'msg> =
-    getRemoteData "/api/v1/relatedIssues" message
+    getRemoteData "/api/v1/relatedIssues" (Decode.list Issue.decoder) message

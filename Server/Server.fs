@@ -14,10 +14,7 @@ open Microsoft.AspNetCore.Builder
 
 open Thoth.Json.Net
 
-open Domain.User
-open Domain.DailyWorkLog
-open Domain.RawDailyWorkLog
-open Domain.Misc
+open Domain
 open Auth
 open Utils
 
@@ -79,15 +76,12 @@ let main args =
                 match projects with
                 | Ok projects ->
                     return!
-                        (Response.withContentType "application/json; charset=utf-8"
-                         >> Response.ofPlainText (
-                             Encode.Auto.toString<DailyWorkLog list> (
-                                 4,
-                                 projects,
-                                 extra = (Extra.empty |> Extra.withDecimal)
-                             )
-                         ))
+                        Handlers.mapJson
+                            (projects
+                             |> List.map DailyWorkLog.encoder
+                             |> Encode.list)
                             ctx
+
                 | Error exn ->
                     printfn $"%A{exn}"
                     return! Response.ofEmpty ctx
@@ -96,25 +90,29 @@ let main args =
     let postDailyWorkLogHandler (user: UserId) (date: DateTime) : HttpHandler =
         fun ctx ->
             task {
-                let! readResult = ctx.Request.BodyReader.ReadAsync()
-                let body = readResult.Buffer.ToString()
+                use reader = new IO.StreamReader(ctx.Request.Body)
+                let! body = reader.ReadToEndAsync()
 
-                match Decode.Auto.fromString<RawDailyWorkLog list> (body) with
+                match Decode.fromString (Decode.list DailyWorkLog.decoder) body with
                 | Ok worklogs ->
-                    let worklogs =
+                    let projectWorkLogs =
                         worklogs
-                        |> List.map validateRawDailyWorkLog
+                        |> List.map (fun worklog ->
+                            worklog.workUnits
+                            |> List.map WorkUnit.validate
+                            |> List.flattenOption
+                            |> Option.map (fun workUnits -> (worklog.projectId, workUnits)))
                         |> List.flattenOption
 
-                    match worklogs with
-                    | Some worklogs ->
-                        let! foo =
-                            worklogs
-                            |> List.map (fun worklog ->
-                                Database.assignProjectWorkUnits connection user worklog.name date worklog.workUnits)
-                            |> Async.Sequential
+                    match projectWorkLogs with
+                    | Some projectWorkLogs ->
+                        let! result = Database.assignProjectWorkUnits connection user date projectWorkLogs
 
-                        return Response.ofPlainText "Success" ctx
+                        match result with
+                        | Ok _ -> return Response.ofPlainText "Success" ctx
+                        | Error exn ->
+                            printfn $"%A{exn}"
+                            return handleBadRequest "Could update database" ctx
                     | None -> return handleBadRequest "DailyWorkLog contains invalid values" ctx
                 | Error error -> return handleBadRequest error ctx
             }

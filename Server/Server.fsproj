@@ -8,6 +8,7 @@
     <ItemGroup>
         <Compile Include="Crypto.fs" />
         <Compile Include="Database.fs" />
+        <Compile Include="Handlers.fs" />
         <Compile Include="Auth.fs" />
         <Compile Include="Server.fs" />
     </ItemGroup>

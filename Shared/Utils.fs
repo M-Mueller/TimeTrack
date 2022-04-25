@@ -41,6 +41,11 @@ module Result =
         | Ok _ -> None
         | Error error -> Some error
 
+    let defaultValue default_ result =
+        match result with
+        | Ok value -> value
+        | Error _ -> default_
+
 module List =
     let flattenOption (input: List<'a option>) : List<'a> option =
         List.foldBack
