@@ -30,19 +30,6 @@ let main args =
 
     Database.initTestData connection
 
-    let handle401 =
-        Response.withStatusCode 401
-        >> Response.withHeader "WWW-Authenticate" "Basic"
-        >> Response.ofPlainText "Authorization required"
-
-    let handleBadRequest error =
-        Response.withStatusCode 400
-        >> Response.ofPlainText error
-
-    let handleNotFound =
-        Response.withStatusCode 404
-        >> Response.ofPlainText "Not found"
-
     let getUserHandler (userid: UserId) : HttpHandler =
         fun ctx ->
             task {
@@ -56,7 +43,7 @@ let main args =
                              Encode.Auto.toString<User> (4, user, extra = (Extra.empty |> Extra.withDecimal))
                          ))
                             ctx
-                | None -> return! handleNotFound ctx
+                | None -> return! ErrorHandler.NotFound ctx
             }
 
     let parseIsoDate (route: RouteCollectionReader) =
@@ -112,9 +99,9 @@ let main args =
                         | Ok _ -> return Response.ofPlainText "Success" ctx
                         | Error exn ->
                             printfn $"%A{exn}"
-                            return handleBadRequest "Could update database" ctx
-                    | None -> return handleBadRequest "DailyWorkLog contains invalid values" ctx
-                | Error error -> return handleBadRequest error ctx
+                            return ErrorHandler.BadRequest "Could update database" ctx
+                    | None -> return ErrorHandler.BadRequest "DailyWorkLog contains invalid values" ctx
+                | Error error -> return ErrorHandler.BadRequest error ctx
             }
 
     let relatedIssuesHandler (user: UserId) : HttpHandler =
@@ -130,7 +117,7 @@ let main args =
          >> Response.ofPlainText (Encode.Auto.toString<Issue list> (4, issues)))
 
     let requireAuthentication handleOk =
-        ifAuthenticated (Database.authenticateUser connection) handleOk handle401
+        ifAuthenticated (Database.authenticateUser connection) handleOk ErrorHandler.Unauthorized
 
     webHost args {
         use_static_files
@@ -141,11 +128,11 @@ let main args =
             get
                 "/api/v1/dailyworklog/{date:required}"
                 (requireAuthentication (fun user ->
-                    Request.bindRoute parseIsoDate (getDailyWorkLogHandler user) handleBadRequest))
+                    Request.bindRoute parseIsoDate (getDailyWorkLogHandler user) ErrorHandler.BadRequest))
             post
                 "/api/v1/dailyworklog/{date:required}"
                 (requireAuthentication (fun user ->
-                    Request.bindRoute parseIsoDate (postDailyWorkLogHandler user) handleBadRequest))
+                    Request.bindRoute parseIsoDate (postDailyWorkLogHandler user) ErrorHandler.BadRequest))
 
             get "/api/v1/relatedIssues" (requireAuthentication relatedIssuesHandler)
         ]

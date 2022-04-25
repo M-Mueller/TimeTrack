@@ -61,7 +61,7 @@ type ValidatedComment =
             raw = raw
             value = Validation.validateComment raw }
 
-/// A single unit of work as entered by the user, that hasn't been validated yet
+/// A single unit of work
 type WorkUnit =
     { hours: ValidatedHours
       comment: ValidatedComment }
@@ -69,6 +69,7 @@ type WorkUnit =
         String.IsNullOrWhiteSpace this.comment.raw
         && String.IsNullOrWhiteSpace this.hours.raw
 
+/// A WorkUnit that only contains valid values
 type ValidatedWorkUnit =
     { hours: decimal
       comment: string }
@@ -91,7 +92,7 @@ module WorkUnit =
         | Ok hours, Ok comment -> Some { ValidatedWorkUnit.hours = hours; comment = comment }
         | _ -> None
 
-/// Similar to DailyWorkLog, but the work units also contain the raw user input.
+/// Represents the work units of a project for a single day 
 type DailyWorkLog =
     { projectId: int64
       projectName: string
